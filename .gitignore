@@ -1,0 +1,6 @@
+# Generated local validation/export files
+lcu-probe-report.json
+lcu-recent-matches.csv
+src-tauri/lcu-recent-matches.csv
+src-tauri/target/
+src-tauri/gen/

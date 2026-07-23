@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LOL-SBTI 数据导出</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <h1>LOL-SBTI 数据导出</h1>
+
+    <section id="status-section">
+      <h2>连接状态</h2>
+      <div id="connection-status" class="status-row">
+        <span class="label">LCU 连接：</span>
+        <span id="lcu-status" class="value pending">检测中…</span>
+      </div>
+      <div id="user-row" class="status-row">
+        <span class="label">当前用户：</span>
+        <span id="current-user" class="value">—</span>
+      </div>
+    </section>
+
+    <section id="scope-section">
+      <h2>读取范围说明</h2>
+      <p id="scope-desc">读取当前召唤师最近 50 场对局记录（包含英雄、KDA、胜负、出装等信息），不修改任何游戏数据。</p>
+    </section>
+
+    <section id="export-section">
+      <button id="export-btn" disabled>导出最近 50 场 CSV</button>
+      <p id="export-message"></p>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
