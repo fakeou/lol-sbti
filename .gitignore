@@ -9,6 +9,9 @@ node_modules/
 .turbo/
 **/dist/
 **/.next/
+**/test-results/
+**/playwright-report/
+*.tsbuildinfo
 
 # Generated local validation/export files
 *.csv
