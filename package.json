@@ -6,6 +6,7 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
     "format:check": "cargo fmt --check --all",
     "desktop:build": "cargo build -p lol-sbti",
     "desktop:dev": "cargo run -p lol-sbti",

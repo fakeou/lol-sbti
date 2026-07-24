@@ -1,0 +1,14 @@
+{
+  "name": "@lol-sbti/test-fixtures",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+  },
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "scripts": { "build": "tsc -p tsconfig.json", "test": "vitest run --passWithNoTests", "typecheck": "tsc -p tsconfig.json --noEmit" },
+  "dependencies": { "@lol-sbti/contracts": "workspace:*" },
+  "devDependencies": { "typescript": "^5.8.3", "vitest": "^3.2.4" }
+}

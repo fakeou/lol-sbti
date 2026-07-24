@@ -3,7 +3,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["$TURBO_ROOT$/target/**"]
+      "outputs": ["dist/**", "$TURBO_ROOT$/target/**"]
     },
     "dev": {
       "cache": false,
@@ -11,6 +11,10 @@
     },
     "test": {
       "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
       "outputs": []
     }
   }
