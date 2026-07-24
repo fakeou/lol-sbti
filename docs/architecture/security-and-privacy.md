@@ -37,11 +37,14 @@
 - 数据库存 `SHA-256(secret + serverPepper)`，应用层二次验证比较使用常量时间函数。receipt/share 明文采用用途隔离 HMAC 可恢复派生，仅在认证响应中交付；数据库仍只存哈希。server pepper 轮换必须版本化并提供不短于最长 token TTL 的双读窗口。
 - LLM key、数据库密码、server pepper 放入部署平台 secret manager/KMS，不进入 Git、镜像层、日志或前端 bundle。
 - 桌面安装凭据存 Windows Credential Manager，不写明文配置。
+- 桌面不得落盘完整脱敏分析请求、receipt 或 share secret；只允许保存 `analysisId`、`idempotencyKey` 与 `managementExpiresAt`。启动后用安装凭据调用恢复接口取得同一 receipt，再继续轮询；恢复记录在删除、410、expired/deleted 或管理期限到期时清除，撤销分享只清 share URL，不清 receipt/恢复元数据。
+- 服务端数据库只保存幂等键哈希；恢复接口必须同时验证安装归属和 key hash，对不匹配、过期与不存在统一返回 404，并采用严格 schema、独立限流和正文/凭据日志脱敏。
 - 所有 token 有用途、作用域和过期时间，禁止复用。
 
 ## 5. 临时链接安全
 
 - 推荐 `/r/{publicId}#{secret}`，secret 位于 fragment。
+- 桌面端以 `REPORT_WEB_BASE_URL` 配置唯一可信报告 origin（默认 HTTPS），接收状态响应和调用系统浏览器前都必须校验 scheme、host 与有效端口完全相同，拒绝 userinfo、query、控制字符、非 `/r/{publicId}` 路径及缺失/非法 fragment secret；系统浏览器调用继续使用参数 API，不拼接 shell 命令。
 - fragment 兑换后立刻从地址栏清除并换取 HttpOnly session cookie。
 - 报告页面设置：
   - `Content-Security-Policy: default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'`

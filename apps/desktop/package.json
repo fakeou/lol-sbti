@@ -4,6 +4,11 @@
   "scripts": {
     "build": "cargo build --manifest-path src-tauri/Cargo.toml",
     "dev": "cargo run --manifest-path src-tauri/Cargo.toml",
-    "test": "cargo test --manifest-path src-tauri/Cargo.toml"
+    "test": "vitest run && cargo test --manifest-path src-tauri/Cargo.toml",
+    "typecheck": "node --check src/app.js"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "vitest": "^3.2.7"
   }
 }

@@ -9,8 +9,7 @@
     "typecheck": "turbo run typecheck",
     "format:check": "cargo fmt --check --all",
     "desktop:build": "cargo build -p lol-sbti",
-    "desktop:dev": "cargo run -p lol-sbti",
-    "desktop:export": "cargo run -p lol-sbti -- --export-once"
+    "desktop:dev": "cargo run -p lol-sbti"
   },
   "devDependencies": {
     "turbo": "^2.0.0"

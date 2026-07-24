@@ -17,7 +17,6 @@ type CreateAnalysisRequestV1 = {
   locale: "zh-CN" | "en-US";
   generatedAt: string;             // ISO 8601 UTC
   clientVersion: string;
-  optionalDisplayName?: string;    // 用户明确同意时才发送
   matches: UploadMatchV1[];
 };
 
@@ -76,15 +75,29 @@ Content-Type: application/json
   "status": "queued",
   "receiptToken": "random-secret",
   "pollAfterMs": 2000,
-  "inputExpiresAt": "2026-07-25T10:00:00Z"
+  "inputExpiresAt": "2026-07-24T11:00:00Z",
+  "managementExpiresAt": "2026-07-25T10:00:00Z"
 }
 ```
 
 - 返回 `202 Accepted`。
 - 数据库仅存 `receiptToken` 的哈希。
-- 同一幂等键返回原任务，不重复调用模型或计费。`receiptToken` 由服务端 pepper、安装 ID 与幂等键通过 HMAC 确定性派生，因此首次响应丢失后可安全重放恢复；数据库仍只存其哈希。更换 pepper 会使未过期 receipt 失效，轮换时必须采用版本化双读窗口。
+- 同一幂等键返回原任务，不重复调用模型或计费。`receiptToken` 由服务端 pepper、安装 ID 与幂等键通过 HMAC 确定性派生；数据库只存 receipt 和幂等键的哈希。更换 pepper 会使未过期 receipt 失效，轮换时必须采用版本化双读窗口。
+- `inputExpiresAt` 只表示服务端规范化输入的最短保留期限；桌面恢复记录必须以 `managementExpiresAt` 为准，默认覆盖完整 24 小时管理生命周期。
 
-### 3.3 查询任务
+### 3.3 恢复任务管理凭据
+
+```http
+POST /v1/analyses/{analysisId}/recover
+Authorization: Bearer <installationCredential>
+Content-Type: application/json
+
+{ "idempotencyKey": "uuid" }
+```
+
+服务端同时校验安装归属、`analysisId`、幂等键哈希和管理期限，重新派生同一个 receipt；不创建任务、不接收分析 payload。请求/响应均拒绝未知字段，并按安装/IP 限流。归属、key、过期或不存在统一返回 `404 NOT_FOUND`，避免枚举。桌面仅落盘 `analysisId`、`idempotencyKey`、`managementExpiresAt`，启动时先恢复 receipt 再继续轮询。
+
+### 3.4 查询任务
 
 ```http
 GET /v1/analyses/{analysisId}
@@ -130,7 +143,7 @@ Authorization: Bearer <receiptToken>
 
 错误响应不得包含 provider 原文、prompt、战绩正文或内部堆栈。
 
-### 3.4 重试
+### 3.5 重试
 
 ```http
 POST /v1/analyses/{analysisId}/retry
@@ -139,7 +152,7 @@ Authorization: Bearer <receiptToken>
 
 仅 `failed + retryable` 可调用；服务端限制次数。重试复用同一 `analysisId` 并新增 job attempt，避免产生多个用户报告。
 
-### 3.5 兑换临时链接
+### 3.6 兑换临时链接
 
 浏览器打开：
 
@@ -158,7 +171,7 @@ Content-Type: application/json
 
 API 校验哈希、过期时间、撤销状态和访问次数后，设置短期 `HttpOnly; Secure; SameSite=Lax` cookie。网页随后用 `history.replaceState` 清除 fragment，再请求报告。默认允许刷新页面，不做“一次打开即销毁”。`shareSecret` 由 server pepper 与不可预测的 `publicId` 通过用途隔离 HMAC 确定性派生：数据库只存哈希，receipt 状态查询可恢复并交付相同 fragment；pepper 轮换采用与 receipt 相同的版本化双读窗口。
 
-### 3.6 获取结果
+### 3.7 获取结果
 
 ```http
 GET /v1/public/reports/{publicId}
@@ -167,7 +180,7 @@ Cookie: report_session=...
 
 返回已验证的结构化结果。过期/撤销统一返回 `410 Gone`，凭据错误返回通用 `404`，避免枚举 public ID。
 
-### 3.7 撤销和删除
+### 3.8 撤销和删除
 
 ```http
 DELETE /v1/analyses/{analysisId}/share
@@ -215,7 +228,7 @@ installations
 - id, credential_hash, created_at, revoked_at, last_seen_at
 
 analyses
-- id, installation_id, status, schema_version, result_version
+- id, installation_id, idempotency_key_hash, status, schema_version, result_version
 - receipt_hash, input_payload_encrypted, aggregate_metrics
 - result_payload, created_at, input_expires_at, result_expires_at, deleted_at
 

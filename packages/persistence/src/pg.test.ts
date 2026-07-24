@@ -77,6 +77,10 @@ pgDescribe("PostgreSQL repository (requires DATABASE_URL)", () => {
     expect([a.created, b.created].sort()).toEqual([false, true]);
     expect((await pool.query("SELECT count(*)::int n FROM analyses WHERE installation_id=$1", [id.installationId])).rows[0].n).toBe(1);
     expect((await pool.query("SELECT count(*)::int n FROM analysis_jobs WHERE analysis_id IN (SELECT id FROM analyses WHERE installation_id=$1)", [id.installationId])).rows[0].n).toBe(1);
+    const recovered = await repo.recoverReceipt(a.analysis.id, id.installationId, base.idempotencyKey);
+    expect(recovered?.receiptToken).toBe(a.receiptToken);
+    expect(await repo.recoverReceipt(a.analysis.id, "ins_wrong", base.idempotencyKey)).toBeUndefined();
+    expect(await repo.recoverReceipt(a.analysis.id, id.installationId, "123e4567-e89b-42d3-a456-999999999999")).toBeUndefined();
   });
 
   it("atomically claims each job once across concurrent workers", async () => {

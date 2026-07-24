@@ -65,7 +65,7 @@ lol-sbti/
 - 当前 `frontend/` 迁至 `apps/desktop/src/`。
 - 当前 `src-tauri/` 迁至 `apps/desktop/src-tauri/`。
 - LCU 通信与脱敏逻辑从 Tauri command 中抽离到 `crates/`，Tauri 层只负责编排。
-- 现有 CSV 导出保留为本地备选能力，但“上传分析”必须是用户主动操作，不在后台自动上传。
+- 桌面端只提供“上传并分析”主流程，不生成或保留本地 CSV；上传必须由用户主动确认，不在后台自动执行。
 
 ## 4. 组件关系
 

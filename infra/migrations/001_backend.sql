@@ -9,7 +9,7 @@ CREATE TABLE installations (
 CREATE TABLE analyses (
   id text PRIMARY KEY,
   installation_id text NOT NULL REFERENCES installations(id),
-  idempotency_key uuid NOT NULL,
+  idempotency_key_hash text NOT NULL,
   status text NOT NULL CHECK (status IN ('accepted','queued','processing','validating','retry_wait','completed','failed','expired','deleted')),
   schema_version integer NOT NULL,
   result_version integer,
@@ -24,7 +24,7 @@ CREATE TABLE analyses (
   input_expires_at timestamptz NOT NULL,
   result_expires_at timestamptz NOT NULL,
   deleted_at timestamptz,
-  UNIQUE (installation_id, idempotency_key)
+  UNIQUE (installation_id, idempotency_key_hash)
 );
 CREATE TABLE analysis_jobs (
   id text PRIMARY KEY,

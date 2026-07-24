@@ -10,7 +10,8 @@
   "main": "./dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run",
+    "schema:generate": "pnpm run build && node scripts/export-create-analysis-schema.mjs",
+    "test": "vitest run && node scripts/check-create-analysis-schema.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

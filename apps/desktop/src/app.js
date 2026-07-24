@@ -1,75 +1,19 @@
-(function () {
-  "use strict";
-
-  const invoke = window.__TAURI__.core.invoke;
-
-  // ---- DOM refs ----
-  const lcuStatusEl = document.getElementById("lcu-status");
-  const currentUserEl = document.getElementById("current-user");
-  const exportBtn = document.getElementById("export-btn");
-  const exportMsg = document.getElementById("export-message");
-
-  // ---- helpers ----
-  function setStatus(el, text, cls) {
-    el.textContent = text;
-    el.className = "value " + (cls || "");
-  }
-
-  function showMessage(text, type) {
-    exportMsg.textContent = text;
-    exportMsg.className = type || "";
-  }
-
-  // ---- refresh LCU status ----
-  async function refreshStatus() {
-    try {
-      const data = await invoke("get_lcu_status");
-      // data: { connected: bool, username: string }
-      if (data && data.connected) {
-        setStatus(lcuStatusEl, "已连接", "online");
-        currentUserEl.textContent = data.username || "—";
-        exportBtn.disabled = false;
-      } else {
-        setStatus(lcuStatusEl, "未连接", "offline");
-        currentUserEl.textContent = "—";
-        exportBtn.disabled = true;
-      }
-    } catch (err) {
-      setStatus(lcuStatusEl, "获取失败", "offline");
-      currentUserEl.textContent = "—";
-      exportBtn.disabled = true;
-      console.error("get_lcu_status error:", err);
-    }
-  }
-
-  // ---- export ----
-  async function handleExport() {
-    exportBtn.disabled = true;
-    showMessage("正在导出，请稍候…", "info");
-
-    try {
-      const result = await invoke("export_recent_matches");
-      // result: { path: string, count: number }
-      if (result && result.path) {
-        showMessage(
-          "导出成功！文件：" + result.path + "（共 " + result.count + " 场）",
-          "success"
-        );
-      } else {
-        showMessage("导出完成，但未返回文件信息", "success");
-      }
-    } catch (err) {
-      showMessage("导出失败：" + (err.message || String(err)), "error");
-      console.error("export_recent_matches error:", err);
-    } finally {
-      exportBtn.disabled = false;
-    }
-  }
-
-  // ---- init ----
-  exportBtn.addEventListener("click", handleExport);
-
-  // immediate refresh + poll every 5s
-  refreshStatus();
-  setInterval(refreshStatus, 5000);
+(function(){"use strict";
+const invoke=window.__TAURI__.core.invoke,$=id=>document.getElementById(id);let preview=null,current=null,timer=null;
+const status=$('lcu-status'),user=$('current-user'),upload=$('upload-btn'),confirm=$('confirm'),message=$('message'),open=$('open-btn');
+const active=new Set(['accepted','queued','processing','validating','retry_wait']);
+function errorText(value){return value&&value.message?value.message:String(value)}
+function canUpload(){upload.disabled=!(preview&&confirm.checked)}
+function clearShare(){if(current&&current.share)current.share=null;delete open.dataset.url;open.hidden=true;$('revoke-btn').hidden=true}
+function clearTask(label){clearTimeout(timer);clearShare();current=null;$('progress-text').textContent=label}
+async function refresh(){try{const data=await invoke('get_lcu_status');status.textContent=data.connected?'已连接':'未连接';user.textContent=data.username||'—';if(data.connected&&!preview){preview=await invoke('preview_matches');$('preview').hidden=false;$('match-count').textContent=preview.count;$('match-time').textContent=`${preview.from} — ${preview.to}`;$('match-modes').textContent=Object.entries(preview.modes).map(([k,v])=>`${k} ${v}`).join(' / ');const skipped=Number(preview.skipped||0);$('skipped-summary').hidden=!skipped;$('skipped-count').textContent=skipped;$('skip-reasons').textContent=Object.entries(preview.skipReasons||{}).map(([reason,count])=>`${reason} ${count} 场`).join('；');canUpload()}}catch(_){status.textContent='未连接';upload.disabled=true}}
+async function poll(){if(!current)return;try{current=await invoke('analysis_status',{id:current.analysisId});render(current);if(active.has(current.status))timer=setTimeout(poll,Math.max(500,current.pollAfterMs||3000));else if(['gone','expired','deleted'].includes(current.status))clearTask(({'gone':'报告已过期或删除','expired':'报告已过期','deleted':'报告已删除'})[current.status])}catch(e){message.textContent=errorText(e);if(current)timer=setTimeout(poll,5000)}}
+function render(data){$('progress').hidden=false;$('progress-text').textContent=({accepted:'已接受',queued:'排队中',processing:'AI 分析中',validating:'结果校验中',retry_wait:'等待重试',completed:'报告已生成',failed:'分析失败',gone:'报告已过期或删除',expired:'报告已过期',deleted:'报告已删除'})[data.status]||data.status;$('retry-btn').hidden=!(data.status==='failed'&&data.error&&data.error.retryable);const completed=data.status==='completed'&&data.share;if(!completed)clearShare();else{open.hidden=false;$('revoke-btn').hidden=false;open.dataset.url=data.share.url}}
+async function recover(){try{const recovered=await invoke('recover_analysis');if(recovered){current=recovered;message.textContent='已恢复上次分析任务。';render(current);poll()}}catch(e){message.textContent=errorText(e)}}
+confirm.addEventListener('change',canUpload);upload.addEventListener('click',async()=>{if(!confirm.checked||!preview)return;upload.disabled=true;message.textContent='正在注册安装实例并上传…';try{current=await invoke('create_analysis',{request:preview.request});message.textContent='可以关闭窗口，稍后重新打开查看进度。';render(current);poll()}catch(e){message.textContent=errorText(e);canUpload()}});
+$('retry-btn').addEventListener('click',async()=>{try{await invoke('analysis_action',{id:current.analysisId,kind:'retry'});poll()}catch(e){message.textContent=errorText(e)}});
+$('delete-btn').addEventListener('click',async()=>{if(!current)return;try{await invoke('analysis_action',{id:current.analysisId,kind:'delete'});clearTask('已取消并删除')}catch(e){message.textContent=errorText(e)}});
+$('revoke-btn').addEventListener('click',async()=>{if(!current)return;try{await invoke('analysis_action',{id:current.analysisId,kind:'revoke'});clearShare();$('progress-text').textContent='临时链接已撤销';message.textContent='任务管理权限仍然有效，你仍可查询或删除报告。'}catch(e){message.textContent=errorText(e)}});
+open.addEventListener('click',()=>{const url=open.dataset.url;if(url)invoke('open_report',{url}).catch(e=>message.textContent=errorText(e))});
+recover();refresh();setInterval(refresh,5000)
 })();

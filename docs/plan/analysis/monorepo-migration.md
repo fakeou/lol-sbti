@@ -45,7 +45,7 @@
 ### Phase 1：monorepo 骨架与本地算法
 
 - 建立 pnpm/Turbo/Cargo workspaces。
-- 迁移现有桌面端，确保 LCU 连接与 CSV 不回归。
+- 迁移现有桌面端，确保 LCU 连接不回归；删除 CSV 输出，收敛为上传分析流程。
 - 建立 contracts、fixtures 和 sanitizer。
 - 用确定性算法生成本地报告，先验证产品是否有解释价值。
 

@@ -48,7 +48,6 @@ export const CreateAnalysisRequestV1Schema = StrictObject({
   locale: Type.Union([Type.Literal("zh-CN"), Type.Literal("en-US")]),
   generatedAt: UtcTimestamp,
   clientVersion: Type.String({ minLength: 1, maxLength: 64, pattern: "^[A-Za-z0-9._+-]+$" }),
-  optionalDisplayName: Type.Optional(Type.String({ minLength: 1, maxLength: 32, pattern: "^[^<>\\r\\n]*$" })),
   matches: Type.Array(UploadMatchV1Schema, { minItems: 5, maxItems: 100 })
 });
 export type CreateAnalysisRequestV1 = Static<typeof CreateAnalysisRequestV1Schema>;
@@ -58,9 +57,23 @@ export const CreateAnalysisResponseV1Schema = StrictObject({
   status: Type.Literal("queued"),
   receiptToken: Type.String({ minLength: 32, maxLength: 512 }),
   pollAfterMs: Type.Integer({ minimum: 250, maximum: 60000 }),
-  inputExpiresAt: UtcTimestamp
+  inputExpiresAt: UtcTimestamp,
+  managementExpiresAt: UtcTimestamp
 });
 export type CreateAnalysisResponseV1 = Static<typeof CreateAnalysisResponseV1Schema>;
+
+export const RecoverAnalysisRequestV1Schema = StrictObject({
+  idempotencyKey: Type.String({ pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$" })
+});
+export type RecoverAnalysisRequestV1 = Static<typeof RecoverAnalysisRequestV1Schema>;
+
+export const RecoverAnalysisResponseV1Schema = StrictObject({
+  analysisId: Identifier,
+  receiptToken: Type.String({ minLength: 32, maxLength: 512 }),
+  pollAfterMs: Type.Integer({ minimum: 250, maximum: 60000 }),
+  managementExpiresAt: UtcTimestamp
+});
+export type RecoverAnalysisResponseV1 = Static<typeof RecoverAnalysisResponseV1Schema>;
 
 const ShareSchema = StrictObject({ url: Type.String({ minLength: 1, maxLength: 2048, pattern: "^https://" }), expiresAt: UtcTimestamp });
 const ErrorSchema = StrictObject({ code: Type.String({ minLength: 1, maxLength: 64, pattern: "^[A-Z0-9_]+$" }), retryable: Type.Boolean() });
