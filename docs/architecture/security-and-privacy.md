@@ -34,7 +34,7 @@
 ## 4. 凭据规则
 
 - 随机 secret 使用 CSPRNG，至少 256 bit。
-- 数据库存 `SHA-256(secret + serverPepper)`，比较使用常量时间函数。
+- 数据库存 `SHA-256(secret + serverPepper)`，应用层二次验证比较使用常量时间函数。receipt/share 明文采用用途隔离 HMAC 可恢复派生，仅在认证响应中交付；数据库仍只存哈希。server pepper 轮换必须版本化并提供不短于最长 token TTL 的双读窗口。
 - LLM key、数据库密码、server pepper 放入部署平台 secret manager/KMS，不进入 Git、镜像层、日志或前端 bundle。
 - 桌面安装凭据存 Windows Credential Manager，不写明文配置。
 - 所有 token 有用途、作用域和过期时间，禁止复用。

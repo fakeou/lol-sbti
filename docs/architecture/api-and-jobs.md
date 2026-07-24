@@ -82,7 +82,7 @@ Content-Type: application/json
 
 - 返回 `202 Accepted`。
 - 数据库仅存 `receiptToken` 的哈希。
-- 同一幂等键返回原任务，不重复调用模型或计费。
+- 同一幂等键返回原任务，不重复调用模型或计费。`receiptToken` 由服务端 pepper、安装 ID 与幂等键通过 HMAC 确定性派生，因此首次响应丢失后可安全重放恢复；数据库仍只存其哈希。更换 pepper 会使未过期 receipt 失效，轮换时必须采用版本化双读窗口。
 
 ### 3.3 查询任务
 
@@ -156,7 +156,7 @@ Content-Type: application/json
 { "publicId": "pub_01...", "secret": "..." }
 ```
 
-API 校验哈希、过期时间、撤销状态和访问次数后，设置短期 `HttpOnly; Secure; SameSite=Lax` cookie。网页随后用 `history.replaceState` 清除 fragment，再请求报告。默认允许刷新页面，不做“一次打开即销毁”。
+API 校验哈希、过期时间、撤销状态和访问次数后，设置短期 `HttpOnly; Secure; SameSite=Lax` cookie。网页随后用 `history.replaceState` 清除 fragment，再请求报告。默认允许刷新页面，不做“一次打开即销毁”。`shareSecret` 由 server pepper 与不可预测的 `publicId` 通过用途隔离 HMAC 确定性派生：数据库只存哈希，receipt 状态查询可恢复并交付相同 fragment；pepper 轮换采用与 receipt 相同的版本化双读窗口。
 
 ### 3.6 获取结果
 
@@ -220,7 +220,7 @@ analyses
 - result_payload, created_at, input_expires_at, result_expires_at, deleted_at
 
 analysis_jobs
-- id, analysis_id, attempt, status, lease_until
+- id, analysis_id, attempt, status, lease_until, owner_token, fence
 - provider, model_id, prompt_version, error_code
 - queued_at, started_at, finished_at
 
@@ -269,4 +269,4 @@ claim job (atomic lease)
 | `retry_wait` | scheduler | `queued` |
 | `completed` | retention job | `expired` / `deleted` |
 
-状态更新使用乐观锁或条件更新；任何消费者重放都不得重复创建报告、链接或模型费用记录。
+状态更新使用 owner token + 单调 fence + 未过期 lease 的条件更新。worker 在 provider 调用期间持续 heartbeat；旧 owner 的 validating、complete、fail/retry 写入必须失败。任何消费者重放都不得重复创建报告、链接或模型费用记录。
