@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.lolsbti.exporter",
   "build": {
-    "frontendDist": "../frontend"
+    "frontendDist": "../src"
   },
   "app": {
     "withGlobalTauri": true,

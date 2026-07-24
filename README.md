@@ -1,6 +1,6 @@
 # LOL-SBTI LCU 数据导出器
 
-一个简洁的 Windows Tauri 2 桌面端，自动识别当前登录的英雄联盟 LCU 用户，并将最近最多 100 场对局导出为 CSV。
+一个简洁的 Windows Tauri 2 桌面端，自动识别当前登录的英雄联盟 LCU 用户，并将最近最多 100 场对局导出为 CSV。仓库使用 pnpm workspace、Turborepo 与 Cargo workspace 管理。
 
 > 项目计划演进为包含桌面端、Web、API 和分析 Worker 的 monorepo，详见 [架构设计](docs/architecture/README.md) 与 [迁移分析](docs/plan/analysis/monorepo-migration.md)。
 
@@ -16,13 +16,32 @@
 
 > 应用会分页读取并按对局 ID 去重；部分 LCU 可能在深分页时重复返回第一页，此时会停止分页，因此实际结果受本地客户端可返回的历史记录限制。
 
-## 运行桌面端
+## 环境
 
-需要 Windows WebView2、Visual Studio C++ Build Tools 和 Rust 1.88。项目已通过 `rust-toolchain.toml` 固定工具链。
+需要 Windows WebView2、Visual Studio C++ Build Tools、Node.js、pnpm 9 和 Rust 1.88。项目已通过 `rust-toolchain.toml` 固定 Rust 工具链。
+
+首次使用先安装 JavaScript 工具依赖：
 
 ```powershell
-Set-Location .\src-tauri
-cargo run
+pnpm install
+```
+
+## 根目录命令
+
+```powershell
+# 启动桌面端
+pnpm desktop:dev
+
+# 构建桌面端
+pnpm desktop:build
+
+# 无界面导出一次
+pnpm desktop:export
+
+# Rust workspace 检查
+cargo fmt --check --all
+cargo test --workspace
+cargo build -p lol-sbti
 ```
 
 界面会自动检测客户端。点击“导出最近 100 场 CSV”后，文件写入应用启动时的当前目录：
@@ -31,29 +50,19 @@ cargo run
 lcu-recent-matches.csv
 ```
 
-如果希望 CSV 直接生成在仓库根目录，请从根目录启动已构建程序：
+构建后的程序位于：
 
-```powershell
-.\src-tauri\target\debug\lol-sbti.exe
+```text
+target\debug\lol-sbti.exe
 ```
 
-## 构建
+也可直接验证无界面导出：
 
 ```powershell
-Set-Location .\src-tauri
-cargo check
-cargo build
+.\target\debug\lol-sbti.exe --export-once
 ```
 
-如果需要打包安装程序，可安装 Tauri CLI 后运行 `tauri build`；当前配置默认关闭 bundle，仅构建桌面可执行文件。
-
-## 无界面导出验证
-
-```powershell
-.\src-tauri\target\debug\lol-sbti.exe --export-once
-```
-
-成功时只输出 CSV 路径和导出场数。
+成功时只输出 CSV 路径和导出场数。如果需要打包安装程序，可安装 Tauri CLI 后运行 `tauri build`；当前配置默认关闭 bundle，仅构建桌面可执行文件。
 
 ## PowerShell 探针
 

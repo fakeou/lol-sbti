@@ -1,0 +1,17 @@
+{
+  "name": "lol-sbti",
+  "private": true,
+  "packageManager": "pnpm@9.1.2",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "format:check": "cargo fmt --check --all",
+    "desktop:build": "cargo build -p lol-sbti",
+    "desktop:dev": "cargo run -p lol-sbti",
+    "desktop:export": "cargo run -p lol-sbti -- --export-once"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0"
+  }
+}
