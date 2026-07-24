@@ -6,7 +6,14 @@ import {
 } from "./provider.js";
 
 const metrics: any = {
-  classification: { typeCode: "unclassified", dimensions: [] },
+  classification: { typeCode: "unclassified", dimensions: [
+    { code: "aggression", score: 50, evidenceCodes: ["avg_kills"], explanation: "test aggression" },
+    { code: "teamwork", score: 50, evidenceCodes: ["avg_assists"], explanation: "test teamwork" },
+    { code: "consistency", score: 50, evidenceCodes: ["kda_stdev"], explanation: "test consistency" },
+    { code: "vision_control", score: 50, evidenceCodes: ["avg_vision_per_min"], explanation: "test vision" },
+    { code: "economy", score: 50, evidenceCodes: ["avg_cs_per_min"], explanation: "test economy" },
+    { code: "survivability", score: 50, evidenceCodes: ["avg_deaths"], explanation: "test survivability" },
+  ] },
   sample: {
     matchCount: 5,
     queues: [{ queueId: 420, count: 5 }],
