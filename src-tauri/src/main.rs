@@ -5,7 +5,7 @@ use reqwest::blocking::Client;
 use serde::Serialize;
 use serde_json::Value;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     ffi::c_void,
     fs::File,
     io::{self, Write},
@@ -26,7 +26,8 @@ use windows_sys::Win32::{
 };
 
 const PROCESS_COMMAND_LINE_INFORMATION: u32 = 60;
-const MAX_MATCHES: usize = 50;
+const HISTORY_PAGE_SIZE: usize = 50;
+const MAX_MATCHES: usize = 100;
 
 #[link(name = "ntdll")]
 extern "system" {
@@ -415,21 +416,57 @@ fn csv_row(
     })
 }
 
+fn recent_games(connection: &LcuConnection, puuid: &str) -> Result<Vec<Value>, String> {
+    let mut seen_game_ids = HashSet::new();
+    let mut recent_games = Vec::new();
+
+    for begin in (0..MAX_MATCHES).step_by(HISTORY_PAGE_SIZE) {
+        let end = begin + HISTORY_PAGE_SIZE - 1;
+        let path = format!(
+            "/lol-match-history/v1/products/lol/{puuid}/matches?begIndex={begin}&endIndex={end}"
+        );
+        let history = connection.get(&path)?;
+        let games = history
+            .pointer("/games/games")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "LCU 未返回对局列表".to_string())?;
+        if games.is_empty() {
+            break;
+        }
+
+        let mut added_on_page = 0usize;
+        for game in games {
+            let Some(game_id) = game.get("gameId").map(Value::to_string) else {
+                continue;
+            };
+            if seen_game_ids.insert(game_id) {
+                recent_games.push(game.clone());
+                added_on_page += 1;
+                if recent_games.len() == MAX_MATCHES {
+                    break;
+                }
+            }
+        }
+
+        // 部分 LCU 会在深分页时重复返回第一页；没有新增记录时立即停止。
+        if games.len() < HISTORY_PAGE_SIZE
+            || added_on_page == 0
+            || recent_games.len() == MAX_MATCHES
+        {
+            break;
+        }
+    }
+
+    Ok(recent_games)
+}
+
 fn export_matches_to(directory: PathBuf) -> Result<ExportResult, String> {
     let (connection, summoner) = current_connection()?;
     let puuid = summoner
         .get("puuid")
         .and_then(Value::as_str)
         .ok_or_else(|| "当前用户缺少必要标识".to_string())?;
-    let path = format!(
-        "/lol-match-history/v1/products/lol/{}/matches?begIndex=0&endIndex=49",
-        puuid
-    );
-    let history = connection.get(&path)?;
-    let games = history
-        .pointer("/games/games")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "LCU 未返回对局列表".to_string())?;
+    let games = recent_games(&connection, puuid)?;
     if games.is_empty() {
         return Err("没有可导出的近期对局".into());
     }
@@ -444,7 +481,7 @@ fn export_matches_to(directory: PathBuf) -> Result<ExportResult, String> {
         .from_writer(file);
     let mut count = 0usize;
 
-    for game in games.iter().take(MAX_MATCHES) {
+    for game in &games {
         let detail = game
             .get("gameId")
             .map(Value::to_string)
