@@ -1,0 +1,17 @@
+:root {
+  color-scheme: dark;
+  --ink: #f7f4ea;
+  --muted: #aaa99f;
+  --paper: #0b0c0d;
+  --panel: #151719;
+  --line: #303438;
+  --accent: #d8ff57;
+  --accent-ink: #141800;
+  --danger: #ff8f81;
+  --radius: 18px;
+  --shadow: 0 22px 80px rgba(0,0,0,.35);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: Arial, "Microsoft YaHei", sans-serif; }
+button, a { font: inherit; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
