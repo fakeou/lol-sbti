@@ -16,7 +16,7 @@ Windows Tauri 2 桌面客户端：只读连接当前英雄联盟 LCU，在本机
 
 ## 隐私边界
 
-- 不上传或持久化 LCU Token、PUUID、Account ID、Summoner ID、原始对局 ID或原始 LCU 响应。
+- 不上传或持久化 LCU Token、PUUID、Account ID、Summoner ID、游戏显示名、原始对局 ID 或原始 LCU 响应；V1 不提供可选显示名字段。
 - 上传 DTO 只包含 V1 分析所需的时间（分钟精度）、队列/模式、英雄/位置、胜负、KDA、经济、伤害、视野和装备等脱敏指标。
 - 安装凭据保存在 Windows Credential Manager；任务 receipt 和报告 share secret 仅短期存在于内存。
 - 本机恢复文件仅包含 `analysisId`、`idempotencyKey`、`managementExpiresAt`。

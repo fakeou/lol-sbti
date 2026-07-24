@@ -1,5 +1,173 @@
-import type { AnalysisSkill } from "@lol-sbti/analysis-skill";import { LbtiReportV1Schema } from "@lol-sbti/contracts";import type { AggregateMetricsV1 } from "@lol-sbti/domain";
-export interface ProviderResult{value:unknown;provider:string;modelId:string}export interface AnalysisProvider{analyze(metrics:AggregateMetricsV1,skill:AnalysisSkill,signal:AbortSignal):Promise<ProviderResult>}
-export class ProviderError extends Error{constructor(readonly code:"MODEL_TIMEOUT"|"MODEL_RATE_LIMITED"|"MODEL_TEMPORARILY_UNAVAILABLE"|"MODEL_SCHEMA_INVALID"|"MODEL_AUTH_FAILED",readonly retryable:boolean){super(code);this.name="ProviderError"}}
-export class FakeProvider implements AnalysisProvider{async analyze(m:AggregateMetricsV1,_s:AnalysisSkill,_a:AbortSignal){return{provider:"fake",modelId:"deterministic-local",value:{resultVersion:1,typeCode:m.classification.typeCode,title:"Unclassified analysis",confidence:0,sample:{matchCount:m.sample.matchCount,queues:m.sample.queues,from:m.sample.from,to:m.sample.to},dimensions:[],summary:"A deterministic local development result.",strengths:[],risks:[],recommendations:[],limitations:["Entertainment-only analysis with no classification rules configured."],generatedAt:"2026-01-01T00:00:00Z"}}}}
-export class OpenAiCompatibleProvider implements AnalysisProvider{constructor(private endpoint:string,private model:string,private apiKey:string){}async analyze(metrics:AggregateMetricsV1,skill:AnalysisSkill,signal:AbortSignal){let response:Response;try{response=await fetch(`${this.endpoint.replace(/\/$/,"")}/chat/completions`,{method:"POST",signal,headers:{authorization:`Bearer ${this.apiKey}`,"content-type":"application/json"},body:JSON.stringify({model:this.model,messages:[{role:"system",content:skill.instructions},{role:"user",content:JSON.stringify(metrics)}],response_format:{type:"json_schema",json_schema:{name:"lbti_report_v1",strict:true,schema:LbtiReportV1Schema}}})})}catch{if(signal.aborted)throw new ProviderError("MODEL_TIMEOUT",true);throw new ProviderError("MODEL_TEMPORARILY_UNAVAILABLE",true)}if(response.status===429)throw new ProviderError("MODEL_RATE_LIMITED",true);if(response.status>=500)throw new ProviderError("MODEL_TEMPORARILY_UNAVAILABLE",true);if(response.status===401||response.status===403)throw new ProviderError("MODEL_AUTH_FAILED",false);if(!response.ok)throw new ProviderError("MODEL_TEMPORARILY_UNAVAILABLE",false);try{const body:any=await response.json(),content=body?.choices?.[0]?.message?.content;if(typeof content!=="string")throw 0;return{provider:"openai-compatible",modelId:this.model,value:JSON.parse(content)}}catch{throw new ProviderError("MODEL_SCHEMA_INVALID",true)}}}
+import type { AnalysisSkill } from "@lol-sbti/analysis-skill";
+import { LbtiReportV1Schema } from "@lol-sbti/contracts";
+import type { AggregateMetricsV1 } from "@lol-sbti/domain";
+
+export interface ProviderResult {
+  value: unknown;
+  provider: string;
+  modelId: string;
+}
+
+export interface AnalysisProvider {
+  analyze(
+    metrics: AggregateMetricsV1,
+    skill: AnalysisSkill,
+    signal: AbortSignal,
+  ): Promise<ProviderResult>;
+}
+
+export class ProviderError extends Error {
+  constructor(
+    readonly code:
+      | "MODEL_TIMEOUT"
+      | "MODEL_RATE_LIMITED"
+      | "MODEL_TEMPORARILY_UNAVAILABLE"
+      | "MODEL_SCHEMA_INVALID"
+      | "MODEL_AUTH_FAILED",
+    readonly retryable: boolean,
+  ) {
+    super(code);
+    this.name = "ProviderError";
+  }
+}
+
+export class FakeProvider implements AnalysisProvider {
+  async analyze(
+    metrics: AggregateMetricsV1,
+    _skill: AnalysisSkill,
+    _signal: AbortSignal,
+  ) {
+    return {
+      provider: "fake",
+      modelId: "deterministic-local",
+      value: {
+        resultVersion: 1,
+        typeCode: metrics.classification.typeCode,
+        title: "Unclassified analysis",
+        confidence: 0,
+        sample: {
+          matchCount: metrics.sample.matchCount,
+          queues: metrics.sample.queues,
+          from: metrics.sample.from,
+          to: metrics.sample.to,
+        },
+        dimensions: [],
+        summary: "A deterministic local development result.",
+        strengths: [],
+        risks: [],
+        recommendations: [],
+        limitations: [
+          "Entertainment-only analysis with no classification rules configured.",
+        ],
+        generatedAt: "2026-01-01T00:00:00Z",
+      },
+    };
+  }
+}
+
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
+
+function parseProviderEndpoint(value: string): URL {
+  if (CONTROL_CHARACTERS.test(value)) {
+    throw new Error("PROVIDER_ENDPOINT must not contain control characters");
+  }
+
+  let endpoint: URL;
+  try {
+    endpoint = new URL(value);
+  } catch {
+    throw new Error("PROVIDER_ENDPOINT must be a valid HTTPS URL");
+  }
+
+  if (endpoint.protocol !== "https:") {
+    throw new Error("PROVIDER_ENDPOINT must use HTTPS");
+  }
+  if (!endpoint.hostname) {
+    throw new Error("PROVIDER_ENDPOINT must include a hostname");
+  }
+  if (endpoint.username || endpoint.password) {
+    throw new Error("PROVIDER_ENDPOINT must not contain userinfo");
+  }
+  if (endpoint.search || endpoint.hash) {
+    throw new Error("PROVIDER_ENDPOINT must not contain query or fragment");
+  }
+
+  return endpoint;
+}
+
+export class OpenAiCompatibleProvider implements AnalysisProvider {
+  private readonly requestUrl: string;
+
+  constructor(
+    endpoint: string,
+    private readonly model: string,
+    private readonly apiKey: string,
+  ) {
+    const validatedEndpoint = parseProviderEndpoint(endpoint);
+    validatedEndpoint.pathname = `${validatedEndpoint.pathname.replace(/\/$/, "")}/chat/completions`;
+    this.requestUrl = validatedEndpoint.href;
+  }
+
+  async analyze(
+    metrics: AggregateMetricsV1,
+    skill: AnalysisSkill,
+    signal: AbortSignal,
+  ) {
+    let response: Response;
+    try {
+      response = await fetch(this.requestUrl, {
+        method: "POST",
+        redirect: "manual",
+        signal,
+        headers: {
+          authorization: `Bearer ${this.apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            { role: "system", content: skill.instructions },
+            { role: "user", content: JSON.stringify(metrics) },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "lbti_report_v1",
+              strict: true,
+              schema: LbtiReportV1Schema,
+            },
+          },
+        }),
+      });
+    } catch {
+      if (signal.aborted) throw new ProviderError("MODEL_TIMEOUT", true);
+      throw new ProviderError("MODEL_TEMPORARILY_UNAVAILABLE", true);
+    }
+
+    if (response.status === 429) {
+      throw new ProviderError("MODEL_RATE_LIMITED", true);
+    }
+    if (response.status >= 500) {
+      throw new ProviderError("MODEL_TEMPORARILY_UNAVAILABLE", true);
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new ProviderError("MODEL_AUTH_FAILED", false);
+    }
+    if (!response.ok) {
+      throw new ProviderError("MODEL_TEMPORARILY_UNAVAILABLE", false);
+    }
+
+    try {
+      const body: any = await response.json();
+      const content = body?.choices?.[0]?.message?.content;
+      if (typeof content !== "string") throw new Error("missing content");
+      return {
+        provider: "openai-compatible",
+        modelId: this.model,
+        value: JSON.parse(content),
+      };
+    } catch {
+      throw new ProviderError("MODEL_SCHEMA_INVALID", true);
+    }
+  }
+}

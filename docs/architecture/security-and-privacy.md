@@ -14,8 +14,7 @@
 
 | 类别 | 示例 | 处理 |
 |---|---|---|
-| 禁止离开本机 | LCU Token、PUUID、Account ID、Summoner ID、原始 game ID/响应 | 仅短期内存；不日志、不持久化、不上传 |
-| 用户可选 | 游戏显示名 | 默认关闭；上传前明确展示；报告可使用匿名昵称 |
+| 禁止离开本机 | LCU Token、PUUID、Account ID、Summoner ID、游戏显示名、原始 game ID/响应 | 仅短期内存；不日志、不持久化、不上传 |
 | 分析输入 | 脱敏的单局指标 | TLS；服务端加密；最短保留 |
 | 聚合结果 | 维度分数、类型、解释 | 仅临时链接可读；到期删除 |
 | 运维元数据 | request ID、状态、延迟、错误码 | 不含正文或 secret；按运维策略保留 |
@@ -35,7 +34,7 @@
 
 - 随机 secret 使用 CSPRNG，至少 256 bit。
 - 数据库存 `SHA-256(secret + serverPepper)`，应用层二次验证比较使用常量时间函数。receipt/share 明文采用用途隔离 HMAC 可恢复派生，仅在认证响应中交付；数据库仍只存哈希。server pepper 轮换必须版本化并提供不短于最长 token TTL 的双读窗口。
-- LLM key、数据库密码、server pepper 放入部署平台 secret manager/KMS，不进入 Git、镜像层、日志或前端 bundle。
+- LLM key、数据库密码、server pepper 放入部署平台 secret manager/KMS，不进入 Git、镜像层、日志或前端 bundle。Worker 启动时只接受无 userinfo、query、fragment 或控制字符的 HTTPS provider endpoint；请求固定到校验后的 origin，禁用重定向，避免 key 被转发到其他网络位置。
 - 桌面安装凭据存 Windows Credential Manager，不写明文配置。
 - 桌面不得落盘完整脱敏分析请求、receipt 或 share secret；只允许保存 `analysisId`、`idempotencyKey` 与 `managementExpiresAt`。启动后用安装凭据调用恢复接口取得同一 receipt，再继续轮询；恢复记录在删除、410、expired/deleted 或管理期限到期时清除，撤销分享只清 share URL，不清 receipt/恢复元数据。
 - 服务端数据库只保存幂等键哈希；恢复接口必须同时验证安装归属和 key hash，对不匹配、过期与不存在统一返回 404，并采用严格 schema、独立限流和正文/凭据日志脱敏。

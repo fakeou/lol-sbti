@@ -45,7 +45,7 @@ type UploadMatchV1 = {
 
 ### 不变量
 
-- 不含 `gameId`、PUUID、Account ID、Summoner ID、队友/对手身份。
+- 不含 `gameId`、PUUID、Account ID、Summoner ID、游戏显示名或队友/对手身份；V1 不提供可选显示名字段。
 - 数值均有 schema 上下界；未来新增字段不能静默改变 V1 含义。
 - `occurredAt` 仅保留到分钟也足够分析时，应降低精度以减少可关联性。
 - 自由文本不得直接拼入 system prompt；`gameMode` 和 `position` 映射到服务端白名单枚举。

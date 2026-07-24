@@ -172,7 +172,7 @@ completed ── retention deadline ──► expired/deleted
 
 - Riot OAuth 或游戏账号体系。
 - 永久公开报告、用户排行榜、社交分享索引。
-- 在服务器保存 LCU Token、PUUID、Account ID、Summoner ID 或原始 LCU 响应。
+- 在服务器保存 LCU Token、PUUID、Account ID、Summoner ID、游戏显示名或原始 LCU 响应。
 - 让 LLM 直接决定可计算的数值指标。
 - 让客户端直接持有 LLM provider key。
 - 自动后台采集或未经确认持续上传。
