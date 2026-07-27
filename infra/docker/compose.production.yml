@@ -1,0 +1,99 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../migrations:/docker-entrypoint-initdb.d:ro
+    networks: [internal]
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+    restart: unless-stopped
+    command: ["node", "apps/api/dist/main.js"]
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DATABASE_URL: ${DATABASE_URL}
+      SERVER_PEPPER: ${SERVER_PEPPER}
+      INPUT_ENCRYPTION_KEY: ${INPUT_ENCRYPTION_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+    restart: unless-stopped
+    command: ["node", "apps/worker/dist/main.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      SERVER_PEPPER: ${SERVER_PEPPER}
+      INPUT_ENCRYPTION_KEY: ${INPUT_ENCRYPTION_KEY}
+      ANALYSIS_SKILL_PATH: /app/skills/lbti-titles.md
+      ANALYSIS_SKILL_ROOT: /app/skills
+      PROVIDER_KIND: openai-compatible
+      PROVIDER_ENDPOINT: ${PROVIDER_ENDPOINT}
+      PROVIDER_MODEL: ${PROVIDER_MODEL}
+      PROVIDER_API_KEY: ${PROVIDER_API_KEY}
+      PROVIDER_TIMEOUT_MS: "60000"
+      WORKER_CONCURRENCY: "1"
+      WORKER_DAILY_BUDGET: "100"
+      PUBLIC_REPORT_BASE_URL: https://${PUBLIC_DOMAIN}/r
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+    restart: unless-stopped
+    command: ["pnpm", "--filter", "@lol-sbti/web", "start"]
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      REPORT_API_ORIGIN: http://api:3001
+    depends_on: [api]
+    networks: [internal, edge]
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [web]
+    networks: [edge]
+
+networks:
+  internal:
+    internal: true
+  edge:
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:
