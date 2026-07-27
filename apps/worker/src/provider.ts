@@ -173,7 +173,7 @@ export class OpenAiCompatibleProvider implements AnalysisProvider {
         { role: "user", content: JSON.stringify(metrics) },
       ],
       response_format: { type: "json_object" },
-      max_tokens: 2048,
+      max_tokens: 8192,
       temperature: 0,
     });
 

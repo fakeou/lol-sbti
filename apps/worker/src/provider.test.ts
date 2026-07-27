@@ -75,7 +75,7 @@ describe("providers", () => {
     const body = JSON.parse(request.end.mock.calls[0][0]);
     expect(body.messages[0].content).toBe(skill.instructions);
     expect(body.response_format).toEqual({ type: "json_object" });
-    expect(body.max_tokens).toBeGreaterThanOrEqual(1024);
+    expect(body.max_tokens).toBeGreaterThanOrEqual(8192);
     expect(body.temperature).toBe(0);
   });
 
