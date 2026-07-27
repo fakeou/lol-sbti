@@ -70,7 +70,7 @@ const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const OUTPUT_MAX_TOKENS = 4096;
 const OUTPUT_CONSTRAINTS =
-  "严格输出一个紧凑的 JSON 对象，不要 Markdown、代码围栏或额外文字。只输出必填字段；dimensions 必须恰好 6 项；strengths、risks、recommendations 各最多 3 项；每项简短，summary 控制在 80 字以内，limitations 只保留 1 项。确保 JSON 在输出结束前完整闭合。";
+  "这是严格的短输出任务：只输出一个完整、紧凑的 JSON 对象，不要 Markdown、代码围栏、解释或额外文字。不得添加 schema 外字段。dimensions 必须恰好 6 项；strengths、risks、recommendations 必须全部为空数组；limitations 必须只有 1 项；summary 不超过 40 个汉字；每个 dimension.explanation 不超过 20 个汉字；title 不超过 20 个汉字。所有字符串都要简短，确保 JSON 在输出结束前完整闭合。";
 
 function readPositiveInteger(value: string | undefined, fallback: number): number {
   if (value === undefined) return fallback;
