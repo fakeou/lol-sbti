@@ -1,3 +1,5 @@
+import { request as httpsRequest } from "node:https";
+import type { RequestOptions } from "node:https";
 import type { AnalysisSkill } from "@lol-sbti/analysis-skill";
 import type { AggregateMetricsV1 } from "@lol-sbti/domain";
 
@@ -65,6 +67,7 @@ export class FakeProvider implements AnalysisProvider {
 }
 
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
+const REQUEST_TIMEOUT_MS = 30_000;
 
 function parseProviderEndpoint(value: string): URL {
   if (CONTROL_CHARACTERS.test(value)) {
@@ -94,8 +97,13 @@ function parseProviderEndpoint(value: string): URL {
   return endpoint;
 }
 
+interface HttpsResponse {
+  statusCode: number;
+  body: string;
+}
+
 export class OpenAiCompatibleProvider implements AnalysisProvider {
-  private readonly requestUrl: string;
+  private readonly requestUrl: URL;
 
   constructor(
     endpoint: string,
@@ -104,7 +112,53 @@ export class OpenAiCompatibleProvider implements AnalysisProvider {
   ) {
     const validatedEndpoint = parseProviderEndpoint(endpoint);
     validatedEndpoint.pathname = `${validatedEndpoint.pathname.replace(/\/$/, "")}/chat/completions`;
-    this.requestUrl = validatedEndpoint.href;
+    this.requestUrl = validatedEndpoint;
+  }
+
+  private request(body: string, signal: AbortSignal): Promise<HttpsResponse> {
+    const options: RequestOptions = {
+      protocol: "https:",
+      hostname: this.requestUrl.hostname,
+      port: this.requestUrl.port || undefined,
+      path: this.requestUrl.pathname,
+      method: "POST",
+      family: 4,
+      servername: this.requestUrl.hostname,
+      timeout: REQUEST_TIMEOUT_MS,
+      headers: {
+        authorization: `Bearer ${this.apiKey}`,
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(body),
+      },
+    };
+
+    return new Promise((resolve, reject) => {
+      const request = httpsRequest(options, (response) => {
+        let responseBody = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk: string) => {
+          responseBody += chunk;
+        });
+        response.once("error", reject);
+        response.once("end", () => {
+          resolve({ statusCode: response.statusCode ?? 0, body: responseBody });
+        });
+      });
+      const abort = () => request.destroy(new Error("request aborted"));
+
+      request.once("error", reject);
+      request.setTimeout(REQUEST_TIMEOUT_MS, () => {
+        reject(new ProviderError("MODEL_TIMEOUT", true));
+        request.destroy();
+      });
+      if (signal.aborted) {
+        abort();
+      } else {
+        signal.addEventListener("abort", abort, { once: true });
+      }
+      request.once("close", () => signal.removeEventListener("abort", abort));
+      request.end(body);
+    });
   }
 
   async analyze(
@@ -112,47 +166,42 @@ export class OpenAiCompatibleProvider implements AnalysisProvider {
     skill: AnalysisSkill,
     signal: AbortSignal,
   ) {
-    let response: Response;
+    const requestBody = JSON.stringify({
+      model: this.model,
+      messages: [
+        { role: "system", content: skill.instructions },
+        { role: "user", content: JSON.stringify(metrics) },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 2048,
+      temperature: 0,
+    });
+
+    let response: HttpsResponse;
     try {
-      response = await fetch(this.requestUrl, {
-        method: "POST",
-        redirect: "manual",
-        signal,
-        headers: {
-          authorization: `Bearer ${this.apiKey}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            { role: "system", content: skill.instructions },
-            { role: "user", content: JSON.stringify(metrics) },
-          ],
-          response_format: { type: "json_object" },
-          max_tokens: 2048,
-          temperature: 0,
-        }),
-      });
-    } catch {
+      response = await this.request(requestBody, signal);
+    } catch (error) {
+      if (error instanceof ProviderError) throw error;
       if (signal.aborted) throw new ProviderError("MODEL_TIMEOUT", true);
       throw new ProviderError("MODEL_TEMPORARILY_UNAVAILABLE", true);
     }
 
-    if (response.status === 429) {
+    if (response.statusCode === 429) {
       throw new ProviderError("MODEL_RATE_LIMITED", true);
     }
-    if (response.status >= 500) {
+    if (response.statusCode >= 500) {
       throw new ProviderError("MODEL_TEMPORARILY_UNAVAILABLE", true);
     }
-    if (response.status === 401 || response.status === 403) {
+    if (response.statusCode === 401 || response.statusCode === 403) {
       throw new ProviderError("MODEL_AUTH_FAILED", false);
     }
-    if (!response.ok) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      // Native https.request never follows redirects, so every 3xx is rejected here.
       throw new ProviderError("MODEL_TEMPORARILY_UNAVAILABLE", false);
     }
 
     try {
-      const body: any = await response.json();
+      const body: any = JSON.parse(response.body);
       const choice = body?.choices?.[0];
       const content = choice?.message?.content;
       if (typeof content !== "string" || choice?.finish_reason === "length" || !content.trim()) {
