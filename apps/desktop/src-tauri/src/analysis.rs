@@ -16,8 +16,8 @@ use uuid::Uuid;
 
 const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const SERVICE: &str = "lol-sbti.installation";
-const DEFAULT_API_BASE_URL: &str = "https://api.example";
-const DEFAULT_REPORT_WEB_BASE_URL: &str = "https://app.example";
+const DEFAULT_API_BASE_URL: &str = "https://agentoffice.top";
+const DEFAULT_REPORT_WEB_BASE_URL: &str = "https://agentoffice.top";
 
 pub trait CredentialStore: Send + Sync {
     fn get(&self) -> Result<Option<String>, String>;
