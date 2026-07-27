@@ -67,9 +67,16 @@ export class FakeProvider implements AnalysisProvider {
 }
 
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
-const REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const OUTPUT_MAX_TOKENS = 4096;
 const OUTPUT_CONSTRAINTS =
   "严格输出一个紧凑的 JSON 对象，不要 Markdown、代码围栏或额外文字。只输出必填字段；dimensions 必须恰好 6 项；strengths、risks、recommendations 各最多 3 项；每项简短，summary 控制在 80 字以内，limitations 只保留 1 项。确保 JSON 在输出结束前完整闭合。";
+
+function readPositiveInteger(value: string | undefined, fallback: number): number {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 function parseProviderEndpoint(value: string): URL {
   if (CONTROL_CHARACTERS.test(value)) {
@@ -117,7 +124,7 @@ export class OpenAiCompatibleProvider implements AnalysisProvider {
     this.requestUrl = validatedEndpoint;
   }
 
-  private request(body: string, signal: AbortSignal): Promise<HttpsResponse> {
+  private request(body: string, signal: AbortSignal, timeoutMs: number): Promise<HttpsResponse> {
     const options: RequestOptions = {
       protocol: "https:",
       hostname: this.requestUrl.hostname,
@@ -126,7 +133,7 @@ export class OpenAiCompatibleProvider implements AnalysisProvider {
       method: "POST",
       family: 4,
       servername: this.requestUrl.hostname,
-      timeout: REQUEST_TIMEOUT_MS,
+      timeout: timeoutMs,
       headers: {
         authorization: `Bearer ${this.apiKey}`,
         "content-type": "application/json",
@@ -149,7 +156,7 @@ export class OpenAiCompatibleProvider implements AnalysisProvider {
       const abort = () => request.destroy(new Error("request aborted"));
 
       request.once("error", reject);
-      request.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      request.setTimeout(timeoutMs, () => {
         reject(new ProviderError("MODEL_TIMEOUT", true));
         request.destroy();
       });
@@ -175,13 +182,14 @@ export class OpenAiCompatibleProvider implements AnalysisProvider {
         { role: "user", content: JSON.stringify(metrics) },
       ],
       response_format: { type: "json_object" },
-      max_tokens: 8192,
+      max_tokens: OUTPUT_MAX_TOKENS,
       temperature: 0,
     });
 
+    const timeoutMs = readPositiveInteger(process.env.PROVIDER_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS);
     let response: HttpsResponse;
     try {
-      response = await this.request(requestBody, signal);
+      response = await this.request(requestBody, signal, timeoutMs);
     } catch (error) {
       if (error instanceof ProviderError) throw error;
       if (signal.aborted) throw new ProviderError("MODEL_TIMEOUT", true);

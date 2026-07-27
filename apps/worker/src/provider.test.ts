@@ -76,7 +76,7 @@ describe("providers", () => {
     expect(body.messages[0].content).toContain(skill.instructions);
     expect(body.messages[0].content).toContain("确保 JSON 在输出结束前完整闭合");
     expect(body.response_format).toEqual({ type: "json_object" });
-    expect(body.max_tokens).toBeGreaterThanOrEqual(8192);
+    expect(body.max_tokens).toBe(4096);
     expect(body.temperature).toBe(0);
   });
 
