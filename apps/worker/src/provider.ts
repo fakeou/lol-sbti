@@ -68,6 +68,8 @@ export class FakeProvider implements AnalysisProvider {
 
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 const REQUEST_TIMEOUT_MS = 30_000;
+const OUTPUT_CONSTRAINTS =
+  "严格输出一个紧凑的 JSON 对象，不要 Markdown、代码围栏或额外文字。只输出必填字段；dimensions 必须恰好 6 项；strengths、risks、recommendations 各最多 3 项；每项简短，summary 控制在 80 字以内，limitations 只保留 1 项。确保 JSON 在输出结束前完整闭合。";
 
 function parseProviderEndpoint(value: string): URL {
   if (CONTROL_CHARACTERS.test(value)) {
@@ -169,7 +171,7 @@ export class OpenAiCompatibleProvider implements AnalysisProvider {
     const requestBody = JSON.stringify({
       model: this.model,
       messages: [
-        { role: "system", content: skill.instructions },
+        { role: "system", content: `${skill.instructions}\n\n${OUTPUT_CONSTRAINTS}` },
         { role: "user", content: JSON.stringify(metrics) },
       ],
       response_format: { type: "json_object" },
