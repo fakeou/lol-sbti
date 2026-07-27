@@ -124,6 +124,25 @@ describe("providers", () => {
     });
   });
 
+  it("projects extra model fields out of the report schema", async () => {
+    respond(200, JSON.stringify({ choices: [{ message: { content: JSON.stringify({ sample: { matchCount: 5, queues: [], from: "x", to: "y", modes: [], positions: [] } }) } }] }));
+    const result = await createProvider().analyze(metrics, skill, new AbortController().signal);
+    expect(result.value).toEqual({
+      resultVersion: undefined,
+      typeCode: undefined,
+      title: undefined,
+      confidence: undefined,
+      sample: { matchCount: 5, queues: [], from: "x", to: "y" },
+      dimensions: undefined,
+      summary: undefined,
+      strengths: undefined,
+      risks: undefined,
+      recommendations: undefined,
+      limitations: undefined,
+      generatedAt: undefined,
+    });
+  });
+
   it("keeps provider errors typed", async () => {
     respond(200, "{}");
     await expect(createProvider().analyze(metrics, skill, new AbortController().signal)).rejects.toBeInstanceOf(ProviderError);

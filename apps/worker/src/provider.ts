@@ -78,6 +78,33 @@ function readPositiveInteger(value: string | undefined, fallback: number): numbe
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function projectReportSchema(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const report = value as Record<string, unknown>;
+  const sample = report.sample;
+  return {
+    resultVersion: report.resultVersion,
+    typeCode: report.typeCode,
+    title: report.title,
+    confidence: report.confidence,
+    sample: sample && typeof sample === "object" && !Array.isArray(sample)
+      ? {
+          matchCount: (sample as Record<string, unknown>).matchCount,
+          queues: (sample as Record<string, unknown>).queues,
+          from: (sample as Record<string, unknown>).from,
+          to: (sample as Record<string, unknown>).to,
+        }
+      : sample,
+    dimensions: report.dimensions,
+    summary: report.summary,
+    strengths: report.strengths,
+    risks: report.risks,
+    recommendations: report.recommendations,
+    limitations: report.limitations,
+    generatedAt: report.generatedAt,
+  };
+}
+
 function parseProviderEndpoint(value: string): URL {
   if (CONTROL_CHARACTERS.test(value)) {
     throw new Error("PROVIDER_ENDPOINT must not contain control characters");
@@ -221,7 +248,7 @@ export class OpenAiCompatibleProvider implements AnalysisProvider {
       return {
         provider: "openai-compatible",
         modelId: this.model,
-        value: JSON.parse(content),
+        value: projectReportSchema(JSON.parse(content)),
       };
     } catch {
       throw new ProviderError("MODEL_SCHEMA_INVALID", true);
