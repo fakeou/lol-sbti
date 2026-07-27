@@ -183,6 +183,7 @@ export class OpenAiCompatibleProvider implements AnalysisProvider {
       ],
       response_format: { type: "json_object" },
       max_tokens: OUTPUT_MAX_TOKENS,
+      reasoning_effort: "low",
       temperature: 0,
     });
 
