@@ -1,5 +1,4 @@
 import type { AnalysisSkill } from "@lol-sbti/analysis-skill";
-import { LbtiReportV1Schema } from "@lol-sbti/contracts";
 import type { AggregateMetricsV1 } from "@lol-sbti/domain";
 
 export interface ProviderResult {
@@ -129,14 +128,9 @@ export class OpenAiCompatibleProvider implements AnalysisProvider {
             { role: "system", content: skill.instructions },
             { role: "user", content: JSON.stringify(metrics) },
           ],
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "lbti_report_v1",
-              strict: true,
-              schema: LbtiReportV1Schema,
-            },
-          },
+          response_format: { type: "json_object" },
+          max_tokens: 2048,
+          temperature: 0,
         }),
       });
     } catch {
@@ -159,8 +153,11 @@ export class OpenAiCompatibleProvider implements AnalysisProvider {
 
     try {
       const body: any = await response.json();
-      const content = body?.choices?.[0]?.message?.content;
-      if (typeof content !== "string") throw new Error("missing content");
+      const choice = body?.choices?.[0];
+      const content = choice?.message?.content;
+      if (typeof content !== "string" || choice?.finish_reason === "length" || !content.trim()) {
+        throw new Error("missing or incomplete content");
+      }
       return {
         provider: "openai-compatible",
         modelId: this.model,

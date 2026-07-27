@@ -42,7 +42,7 @@ describe("providers", () => {
     );
   });
 
-  it("sends the key only to the validated HTTPS endpoint with redirects disabled", async () => {
+  it("sends a StepFun-compatible JSON request only to the validated HTTPS endpoint with redirects disabled", async () => {
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({ choices: [{ message: { content: "{}" } }] }),
@@ -64,13 +64,9 @@ describe("providers", () => {
     expect(init.headers.authorization).toBe("Bearer test-key");
     const body = JSON.parse(init.body);
     expect(body.messages[0].content).toBe(skill.instructions);
-    expect(
-      body.response_format.json_schema.schema.properties.sample.properties
-        .matchCount.minimum,
-    ).toBe(5);
-    expect(body.response_format.json_schema.schema.additionalProperties).toBe(
-      false,
-    );
+    expect(body.response_format).toEqual({ type: "json_object" });
+    expect(body.max_tokens).toBeGreaterThanOrEqual(1024);
+    expect(body.temperature).toBe(0);
   });
 
   it.each([
@@ -141,6 +137,24 @@ describe("providers", () => {
     await expect(
       createProvider().analyze(metrics, skill, new AbortController().signal),
     ).rejects.toMatchObject({ code, retryable });
+  });
+
+  it.each([
+    [{ choices: [{ message: { content: "" } }] }],
+    [{ choices: [{ finish_reason: "length", message: { content: "{\"partial\":true}" } }] }],
+    [{ choices: [{ message: { content: "not json" } }] }],
+  ])("classifies invalid model content as retryable schema errors", async (body) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 })),
+    );
+
+    await expect(
+      createProvider().analyze(metrics, skill, new AbortController().signal),
+    ).rejects.toMatchObject({
+      code: "MODEL_SCHEMA_INVALID",
+      retryable: true,
+    });
   });
 
   it("classifies malformed bodies", async () => {
