@@ -3,7 +3,8 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ReportClient } from "./report-client";
+import { Report, ReportClient } from "./report-client";
+import { mockReport } from "./mock-report";
 
 const secret = "s".repeat(43);
 const report = {
@@ -16,6 +17,14 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); history.replaceState(null, ""
 function response(status: number, body?: unknown) { return Promise.resolve(new Response(body ? JSON.stringify(body) : null, { status, headers: { "content-type": "application/json" } })); }
 
 describe("temporary report lifecycle", () => {
+  it("renders a local mock report without requesting a temporary-report session", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<Report report={mockReport} />);
+    expect(screen.getByRole("heading", { name: /冷静的战术执行者/ })).toBeInTheDocument();
+    expect(screen.getByText("你的优势")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it("exchanges fragment for cookie, removes it only after success, then renders plain report text", async () => {
     history.replaceState(null, "", `/r/pub_test#${secret}`);
     const replace = vi.spyOn(history, "replaceState");
