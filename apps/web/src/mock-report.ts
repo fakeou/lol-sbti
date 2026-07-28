@@ -18,11 +18,11 @@ export const mockReport: LbtiReportV1 = {
     to: "2026-07-28T00:00:00Z"
   },
   dimensions: [
-    { code: "aggression", score: 68, evidenceCodes: ["damage_share", "first_blood"], explanation: "你会在确认资源和人数优势后果断跟进，较少为无把握的开团提前交出关键技能。" },
-    { code: "teamwork", score: 86, evidenceCodes: ["kill_participation", "objective_assists"], explanation: "你常能在小龙、先锋和推进节点与队友同步，团战中的参与率保持稳定。" },
-    { code: "consistency", score: 81, evidenceCodes: ["kda_variance", "gold_per_minute"], explanation: "即使英雄和位置变化，你的发育节奏与死亡控制依然比较可靠。" },
-    { code: "resilience", score: 74, evidenceCodes: ["comeback_win_rate", "late_game_kda"], explanation: "逆风时你更愿意补足视野和边线资源，等待下一次可控的翻盘机会。" },
-    { code: "vision", score: 91, evidenceCodes: ["vision_score", "wards_placed"], explanation: "你的视野投入明显高于样本平均水平，能为队友提供相对清晰的行动空间。" }
+    { code: "survival", score: 74, evidenceCodes: ["death_rate", "late_game_kda"], explanation: "你会把不必要的阵亡压低到可控范围，逆风时也会优先保住关键发育与团战位置。" },
+    { code: "economy", score: 81, evidenceCodes: ["gold_per_minute", "cs_per_minute"], explanation: "你的补刀与资源转化较稳定，能把安全时间尽量换成装备成型速度。" },
+    { code: "damage", score: 68, evidenceCodes: ["damage_share", "damage_per_minute"], explanation: "你会在确认资源和人数优势后果断跟进，让输出更集中地转化为有效团战收益。" },
+    { code: "vision", score: 91, evidenceCodes: ["vision_score", "wards_placed"], explanation: "你的视野投入明显高于样本平均水平，能为队友提供相对清晰的行动空间。" },
+    { code: "teamwork", score: 86, evidenceCodes: ["kill_participation", "objective_assists"], explanation: "你常能在小龙、先锋和推进节点与队友同步，团战中的参与率保持稳定。" }
   ],
   summary: "你更像一名以信息和节奏为核心的执行者：先稳住资源与阵型，再把优势转化为可持续的团队推进。",
   strengths: ["能在资源团前提前布置视野，降低队伍决策的不确定性。", "优势局不急于冒险，擅长把经济领先转成防御塔和中立资源。", "团战中关注队友位置，关键时刻的跟进和保护较为及时。"],

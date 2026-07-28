@@ -5,8 +5,18 @@ import React, { useEffect, useState } from "react";
 import { exchangeSecret, fetchReport, readFragmentSecret, ReportRequestError, type ReportFailure } from "./report-api";
 
 type View = { state: "loading" } | { state: "error"; kind: ReportFailure } | { state: "ready"; report: LbtiReportV1 };
+type MetricCode = "survival" | "economy" | "damage" | "vision" | "teamwork";
+type Metric = { code: MetricCode; label: string; score: number; explanation: string };
+
 const queueNames: Record<number, string> = { 420: "单双排", 440: "灵活排位", 450: "极地大乱斗" };
-const dimensionNames: Record<string, string> = { aggression: "进攻倾向", teamwork: "团队协作", consistency: "稳定程度", resilience: "逆风韧性", vision: "视野控制" };
+const metricDefinitions: Record<MetricCode, { label: string; aliases: string[] }> = {
+  survival: { label: "生存", aliases: ["survival", "resilience"] },
+  economy: { label: "经济", aliases: ["economy", "consistency"] },
+  damage: { label: "输出", aliases: ["damage", "aggression"] },
+  vision: { label: "视野", aliases: ["vision", "vision_control"] },
+  teamwork: { label: "协作", aliases: ["teamwork"] }
+};
+const metricOrder = Object.keys(metricDefinitions) as MetricCode[];
 const date = (value: string) => new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", timeZone: "UTC" }).format(new Date(value));
 
 export function ReportClient({ publicId }: { publicId: string }) {
@@ -52,6 +62,33 @@ function SectionList({ title, items, ordered = false }: { title: string; items: 
   const Tag = ordered ? "ol" : "ul";
   return <section className="card"><h2>{title}</h2><Tag>{items.map((item, i) => <li key={i}>{item}</li>)}</Tag></section>;
 }
+
+function metricValues(dimensions: LbtiReportV1["dimensions"]): Metric[] {
+  return metricOrder.flatMap((code) => {
+    const definition = metricDefinitions[code];
+    const dimension = dimensions.find((item) => definition.aliases.includes(item.code));
+    return dimension ? [{ code, label: definition.label, score: dimension.score, explanation: dimension.explanation }] : [];
+  });
+}
+function point(angle: number, radius: number) {
+  const center = 150;
+  return `${(center + Math.cos(angle) * radius).toFixed(1)},${(center + Math.sin(angle) * radius).toFixed(1)}`;
+}
+function RadarChart({ metrics }: { metrics: Metric[] }) {
+  const complete = metrics.length === metricOrder.length;
+  if (!complete) return <p className="metric-empty">指标样本不足，无法生成完整雷达图。</p>;
+  const scores = Object.fromEntries(metrics.map((metric) => [metric.code, metric.score]));
+  const angle = (index: number) => -Math.PI / 2 + index * (Math.PI * 2 / metricOrder.length);
+  const grid = [25, 50, 75, 100];
+  const scorePoints = metricOrder.map((code, index) => point(angle(index), 104 * (scores[code] ?? 0) / 100)).join(" ");
+  const description = metrics.map((metric) => `${metric.label} ${Math.round(metric.score)}`).join("，");
+  return <svg className="radar" viewBox="0 0 300 300" role="img" aria-labelledby="radar-title radar-description"><title id="radar-title">对局能力雷达</title><desc id="radar-description">{description}</desc>{grid.map((value) => <polygon className="radar-grid" key={value} points={metricOrder.map((_, index) => point(angle(index), 104 * value / 100)).join(" ")} />)}{metricOrder.map((code, index) => <g key={code}><line className="radar-axis" x1="150" y1="150" x2={point(angle(index), 104).split(",")[0]} y2={point(angle(index), 104).split(",")[1]} /><text className="radar-label" x={point(angle(index), 130).split(",")[0]} y={point(angle(index), 130).split(",")[1]}>{metricDefinitions[code].label}</text></g>)}<polygon className="radar-score" points={scorePoints} />{metricOrder.map((code, index) => <circle className="radar-dot" key={code} cx={point(angle(index), 104 * (scores[code] ?? 0) / 100).split(",")[0]} cy={point(angle(index), 104 * (scores[code] ?? 0) / 100).split(",")[1]} r="4" />)}</svg>;
+}
+function TeamEyeMascot() {
+  return <div className="mascot" aria-label="团队之眼：正在标记下一处资源"><svg viewBox="0 0 300 300" aria-hidden="true"><path className="mascot-signal" d="M150 24v42M126 39l24 27 24-27" /><path className="mascot-signal" d="M94 64l25 25M206 64l-25 25" /><circle className="mascot-halo" cx="150" cy="152" r="103" /><path className="mascot-shadow" d="M61 246c39-26 139-26 178 0" /><path className="mascot-body" d="M101 234c6-57 18-85 49-85s43 28 49 85" /><path className="mascot-vest" d="M116 227l12-57h44l12 57" /><circle className="mascot-head" cx="150" cy="125" r="55" /><path className="mascot-helmet" d="M96 120c4-43 100-57 108 0l-16 6H112z" /><path className="mascot-antenna" d="M150 71V43M136 43h28" /><circle className="mascot-eye" cx="129" cy="128" r="9" /><circle className="mascot-eye" cx="171" cy="128" r="9" /><path className="mascot-smile" d="M130 153c13 11 27 11 40 0" /><path className="mascot-board" d="M185 177l49 20-17 49-49-20z" /><path className="mascot-board-line" d="M190 197l27 11M185 211l27 11" /><circle className="mascot-ping" cx="224" cy="76" r="24" /><path className="mascot-ping-mark" d="M224 61v19M214 71h20" /></svg><p><strong>团队之眼</strong><span>不是怂，是在等 CD。</span></p></div>;
+}
+
 export function Report({ report }: { report: LbtiReportV1 }) {
-  return <><Header /><main id="main" className="shell report"><section className="hero" aria-labelledby="report-title"><p className="eyebrow">你的 LBTI 类型</p><h1 id="report-title"><span>{report.typeCode}</span> {report.title}</h1><p className="summary">{report.summary}</p><dl className="facts"><div><dt>可信度</dt><dd>{Math.round(report.confidence * 100)}%</dd></div><div><dt>分析样本</dt><dd>{report.sample.matchCount} 场</dd></div><div><dt>样本区间</dt><dd>{date(report.sample.from)}—{date(report.sample.to)}</dd></div></dl></section><div className="grid"><section className="card dimensions"><h2>维度画像</h2>{report.dimensions.length ? report.dimensions.map(d => <div className="dimension" key={d.code}><div><h3>{dimensionNames[d.code] ?? d.code}</h3><strong>{Math.round(d.score)} / 100</strong></div><progress max="100" value={d.score} aria-label={`${dimensionNames[d.code] ?? d.code}：${Math.round(d.score)} 分`} /><p>{d.explanation}</p></div>) : <p>维度样本不足，未生成评分。</p>}</section><aside className="card sample"><h2>样本构成</h2><ul>{report.sample.queues.map(q => <li key={q.queueId}><span>{queueNames[q.queueId] ?? `队列 ${q.queueId}`}</span><strong>{q.count} 场</strong></li>)}</ul><p>生成于 <time dateTime={report.generatedAt}>{date(report.generatedAt)}</time></p></aside></div><div className="split"><SectionList title="你的优势" items={report.strengths} /><SectionList title="需要留意" items={report.risks} /></div><SectionList title="下一局可以尝试" items={report.recommendations} ordered /><section className="notice"><h2>局限与免责声明</h2>{report.limitations.map((x, i) => <p key={i}>{x}</p>)}<p>这是基于有限战绩与 AI 归纳的娱乐性报告，不代表现实人格、心理诊断或官方评级。</p></section></main><footer>LOL-SBTI · 临时、只读、重视隐私</footer></>;
+  const metrics = metricValues(report.dimensions);
+  return <><Header /><main id="main" className="shell report"><section className="hero" aria-labelledby="report-title"><div className="hero-intro"><TeamEyeMascot /><div className="hero-copy"><p className="eyebrow">LBTI PERSONALITY DOSSIER</p><p className="type-label">你的峡谷人格</p><h1 id="report-title"><span>{report.typeCode}</span> {report.title}</h1><p className="summary">{report.summary}</p></div></div><dl className="facts"><div><dt>可信度</dt><dd>{Math.round(report.confidence * 100)}%</dd></div><div><dt>分析样本</dt><dd>{report.sample.matchCount} 场</dd></div><div><dt>样本区间</dt><dd>{date(report.sample.from)}—{date(report.sample.to)}</dd></div></dl></section><div className="grid"><section className="card dimensions" aria-labelledby="metrics-title"><div className="section-heading"><div><p className="eyebrow">RIFT PROFILE</p><h2 id="metrics-title">对局能力雷达</h2></div><span className="metric-note">近期对局表现</span></div><RadarChart metrics={metrics} /><dl className="metric-list">{metrics.map((metric) => <div key={metric.code}><dt><span>{metric.label}</span><strong>{Math.round(metric.score)}</strong></dt><dd>{metric.explanation}</dd></div>)}</dl></section><aside className="card sample"><p className="eyebrow">MATCH SAMPLE</p><h2>样本构成</h2><ul>{report.sample.queues.map(q => <li key={q.queueId}><span>{queueNames[q.queueId] ?? `队列 ${q.queueId}`}</span><strong>{q.count} 场</strong></li>)}</ul><p>生成于 <time dateTime={report.generatedAt}>{date(report.generatedAt)}</time></p></aside></div><div className="split"><SectionList title="你的优势" items={report.strengths} /><SectionList title="需要留意" items={report.risks} /></div><SectionList title="下一局可以尝试" items={report.recommendations} ordered /><section className="notice"><h2>局限与免责声明</h2>{report.limitations.map((x, i) => <p key={i}>{x}</p>)}<p>这是基于有限战绩与 AI 归纳的娱乐性报告，不代表现实人格、心理诊断或官方评级。</p></section></main><footer>LOL-SBTI · 临时、只读、重视隐私</footer></>;
 }

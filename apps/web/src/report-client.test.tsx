@@ -22,6 +22,11 @@ describe("temporary report lifecycle", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<Report report={mockReport} />);
     expect(screen.getByRole("heading", { name: /冷静的战术执行者/ })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /对局能力雷达/ })).toBeInTheDocument();
+    expect(screen.getAllByText("生存")).toHaveLength(2);
+    expect(screen.getAllByText("经济")).toHaveLength(2);
+    expect(screen.getAllByText("输出")).toHaveLength(2);
+    expect(screen.getByText("团队之眼")).toBeInTheDocument();
     expect(screen.getByText("你的优势")).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -43,7 +48,7 @@ describe("temporary report lifecycle", () => {
   it("uses an existing HttpOnly session when there is no fragment", async () => {
     history.replaceState(null, "", "/r/pub_test");
     const fetchMock = vi.fn().mockImplementation(() => response(200, report)); vi.stubGlobal("fetch", fetchMock);
-    render(<ReportClient publicId="pub_test" />); await screen.findByText("维度画像");
+    render(<ReportClient publicId="pub_test" />); await screen.findByText("对局能力雷达");
     expect(fetchMock).toHaveBeenCalledTimes(1); expect(fetchMock.mock.calls[0]?.[0]).toBe("/v1/public/reports/pub_test");
   });
   it.each([[404,"链接无效或已失效"],[410,"这份报告已过期或被撤销"],[500,"暂时无法载入报告"]])("renders %s state", async (status, message) => {
