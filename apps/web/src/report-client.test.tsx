@@ -28,6 +28,9 @@ describe("temporary report lifecycle", () => {
     expect(screen.getAllByText("输出")).toHaveLength(2);
     expect(screen.getByText("团队之眼")).toBeInTheDocument();
     expect(screen.getByText("你的优势")).toBeInTheDocument();
+    expect(screen.queryByText("可信度")).not.toBeInTheDocument();
+    expect(screen.queryByText("分析样本")).not.toBeInTheDocument();
+    expect(screen.queryByText("样本区间")).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
   it("exchanges fragment for cookie, removes it only after success, then renders plain report text", async () => {
