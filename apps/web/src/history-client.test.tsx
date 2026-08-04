@@ -36,12 +36,21 @@ describe("cloud match history viewer", () => {
     expect(screen.getAllByText("KDA").length).toBeGreaterThan(0);
   });
 
-  it("shows the invalid state when the fragment is missing or malformed", async () => {
-    const fetchMock = vi.fn();
+  it("shows the invalid state when the fragment is missing or malformed and there is no session", async () => {
+    const fetchMock = vi.fn(() => response(404));
     vi.stubGlobal("fetch", fetchMock);
     render(<HistoryClient />);
     expect(await screen.findByRole("heading", { name: "链接无效或已失效" })).toBeInTheDocument();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows existing cloud matches without a fragment when the session cookie is valid", async () => {
+    const fetchMock = vi.fn(() => response(200, { matches }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<HistoryClient />);
+    expect(await screen.findByRole("heading", { name: "我的云端战绩" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("/v1/match-history", expect.objectContaining({ credentials: "same-origin" }));
   });
 
   it("shows expired state when the viewer token was revoked", async () => {

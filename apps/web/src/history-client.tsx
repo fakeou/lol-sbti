@@ -36,23 +36,26 @@ export function HistoryClient() {
     setView({ state: "loading" });
     try {
       const fragment = tokenRef.current ?? "";
-      if (!/^[A-Za-z0-9_-]{43}$/.test(fragment)) {
-        setView({ state: "invalid" });
-        return;
+      const validToken = /^[A-Za-z0-9_-]{43}$/.test(fragment);
+      if (validToken) {
+        const session = await fetch("/v1/history-sessions", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ viewerToken: fragment })
+        });
+        if (!session.ok) {
+          setView({ state: "error", message: session.status === 410 ? "此战绩链接已过期或被撤销，请回到桌面端重新打开。" : "此战绩链接无效，请确认使用了完整链接。" });
+          return;
+        }
+        history.replaceState(null, "", "/history");
       }
-      const session = await fetch("/v1/history-sessions", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ viewerToken: fragment })
-      });
-      if (!session.ok) {
-        setView({ state: "error", message: session.status === 410 ? "此战绩链接已过期或被撤销，请回到桌面端重新打开。" : "此战绩链接无效，请确认使用了完整链接。" });
-        return;
-      }
-      history.replaceState(null, "", "/history");
       const response = await fetch("/v1/match-history", { credentials: "same-origin" });
       if (!response.ok) {
+        if (!validToken) {
+          setView({ state: "invalid" });
+          return;
+        }
         setView({ state: "error", message: "暂时无法载入战绩，请稍后刷新页面重试。" });
         return;
       }
