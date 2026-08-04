@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 pub const MIN_MATCHES: usize = 5;
 pub const MAX_MATCHES: usize = 100;
+pub const MAX_HISTORY_MATCHES: usize = 1000;
 const MODES: [&str; 4] = ["CLASSIC", "ARAM", "URF", "CHERRY"];
 const POSITIONS: [&str; 5] = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
 
@@ -40,6 +41,32 @@ pub struct UploadMatchV1 {
     pub wards_placed: u16,
     pub wards_killed: u16,
     pub items: Vec<u16>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HistoryMatchV1 {
+    #[serde(flatten)]
+    pub matched: UploadMatchV1,
+    pub match_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HistorySyncRequestV1 {
+    pub schema_version: u8,
+    pub matches: Vec<HistoryMatchV1>,
+}
+
+pub fn match_key(value: &UploadMatchV1) -> String {
+    use sha2::{Digest, Sha256};
+    let mut digest = Sha256::new();
+    digest.update(serde_json::to_vec(value).unwrap_or_default());
+    digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -88,6 +115,81 @@ pub fn sanitize_matches(games: &[Value], summoner: &Value) -> Result<Sanitizatio
         matches,
         skip_reasons,
     })
+}
+
+pub fn sanitize_history(
+    games: &[Value],
+    summoner: &Value,
+) -> Result<(Vec<HistoryMatchV1>, usize), String> {
+    let mut matches = Vec::new();
+    let mut skipped = 0usize;
+    for game in games {
+        match sanitize_match(game, summoner) {
+            Ok(item) if matches.len() < MAX_HISTORY_MATCHES => matches.push(HistoryMatchV1 {
+                match_key: match_key(&item),
+                matched: item,
+            }),
+            Ok(_) | Err(_) => skipped += 1,
+        }
+    }
+    Ok((matches, skipped))
+}
+
+pub fn sync_request(matches: Vec<HistoryMatchV1>) -> HistorySyncRequestV1 {
+    HistorySyncRequestV1 {
+        schema_version: 1,
+        matches,
+    }
+}
+
+pub fn validate_history_request(value: &HistorySyncRequestV1) -> Result<(), String> {
+    if value.schema_version != 1
+        || value.matches.is_empty()
+        || value.matches.len() > MAX_HISTORY_MATCHES
+    {
+        return Err("上传数据不符合历史同步 V1 契约".into());
+    }
+    for item in &value.matches {
+        if !valid_match_key(&item.match_key)
+            || !valid_utc(&item.matched.occurred_at)
+            || item.matched.queue_id > 10_000
+            || !MODES.contains(&item.matched.game_mode.as_str())
+            || !(1..=10_800).contains(&item.matched.duration_seconds)
+            || !(1..=10_000).contains(&item.matched.champion_id)
+            || item
+                .matched
+                .position
+                .as_deref()
+                .is_some_and(|position| !POSITIONS.contains(&position))
+            || item.matched.kills > 100
+            || item.matched.deaths > 100
+            || item.matched.assists > 200
+            || item.matched.cs > 2_000
+            || item.matched.gold > 100_000
+            || item.matched.champion_damage > 1_000_000
+            || item.matched.damage_taken > 1_000_000
+            || item.matched.healing > 1_000_000
+            || item.matched.vision_score > 1_000
+            || item.matched.wards_placed > 1_000
+            || item.matched.wards_killed > 1_000
+            || item.matched.items.len() > 10
+            || item
+                .matched
+                .items
+                .iter()
+                .any(|id| *id > 10_000)
+        {
+            return Err("上传数据不符合历史同步 V1 契约".into());
+        }
+    }
+    Ok(())
+}
+
+fn valid_match_key(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 pub fn request(matches: Vec<UploadMatchV1>, client_version: &str) -> CreateAnalysisRequestV1 {
@@ -347,6 +449,50 @@ mod tests {
         let mut invalid = dto;
         invalid.locale = "xx".into();
         assert!(validate_request(&invalid).is_err());
+    }
+    #[test]
+    fn history_sync_includes_all_modes_and_stable_match_keys() {
+        let mut aram = game(0);
+        aram["gameMode"] = json!("ARAM");
+        aram["queueId"] = json!(450);
+        let mut urf = game(1);
+        urf["gameMode"] = json!("URF");
+        let (items, skipped) =
+            sanitize_history(&[game(0), aram, urf], &summoner()).unwrap();
+        assert_eq!(items.len(), 3);
+        assert_eq!(skipped, 0);
+        let modes = items
+            .iter()
+            .map(|item| item.matched.game_mode.as_str())
+            .collect::<Vec<_>>();
+        assert!(modes.contains(&"CLASSIC") && modes.contains(&"ARAM") && modes.contains(&"URF"));
+        assert!(items.iter().all(|item| valid_match_key(&item.match_key)));
+        assert_eq!(items[0].match_key, items[0].match_key);
+        let (again, _) = sanitize_history(&[game(0)], &summoner()).unwrap();
+        assert_eq!(again[0].match_key, items[0].match_key, "去重键必须稳定");
+        let request = sync_request(items);
+        validate_history_request(&request).unwrap();
+        let text = serde_json::to_string(&request).unwrap();
+        assert!(text.contains("matchKey") && !text.contains("gameId") && !text.contains("private-"));
+    }
+    #[test]
+    fn history_cap_and_validation() {
+        let (items, skipped) =
+            sanitize_history(&(0..1001).map(game).collect::<Vec<_>>(), &summoner()).unwrap();
+        assert_eq!(items.len(), 1000);
+        assert_eq!(skipped, 1);
+        let mut request = sync_request(items);
+        request.schema_version = 2;
+        assert!(validate_history_request(&request).is_err());
+        let mut invalid_key = sync_request(vec![HistoryMatchV1 {
+            match_key: "Z".repeat(64),
+            matched: sanitize_history(&[game(0)], &summoner()).unwrap().0[0]
+                .matched
+                .clone(),
+        }]);
+        assert!(validate_history_request(&invalid_key).is_err());
+        invalid_key.matches[0].match_key = "a".repeat(63);
+        assert!(validate_history_request(&invalid_key).is_err());
     }
     #[test]
     fn dto_matches_generated_shared_v1_schema() {

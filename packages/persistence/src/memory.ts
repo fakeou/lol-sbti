@@ -1,5 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
-import type { AnalysisRecord,AnalysisRepository,ClaimedJob,CompleteGrant,CreateAnalysisInput } from "./index.js";
+import type { AnalysisRecord,AnalysisRepository,ClaimedJob,CompleteGrant,CreateAnalysisInput,HistoryMatchRow } from "./index.js";
 const derive=(pepper:string,purpose:string,id:string)=>createHmac("sha256",pepper).update(`${purpose}\0${id}`).digest("base64url");
 type Stored=AnalysisRecord&{installationId:string;keyHash:string;receipt:string;payload:unknown;resultExpiresAt:Date};
 type Job={id:string;analysisId:string;attempt:number;status:"queued"|"processing"|"completed"|"failed";availableAt:number;leaseUntil:number;owner?:string;fence:number};
@@ -22,6 +22,13 @@ export class MemoryRepository implements AnalysisRepository{
  async deleteAnalysis(id:string,r:string){const a=this.analyses.get(id);if(!a||a.receipt!==r)return false;await this.revokeShare(id,r);a.status="deleted";a.payload=undefined;a.resultPayload=undefined;return true}
  async cleanupExpired(){let n=0;for(const a of this.analyses.values()){if(a.inputExpiresAt<=new Date())a.payload=undefined;if(a.resultExpiresAt<=new Date()&&a.status!=="deleted"&&a.status!=="expired"){a.status="expired";a.resultPayload=undefined;n++}}return n}
  async reserveBudget(limit:number){const day=new Date().toISOString().slice(0,10);if(day!==this.budgetDay){this.budgetDay=day;this.spent=0}if(this.spent>=limit)return false;this.spent++;return true}
+ private matches=new Map<string,{matchKey:string;occurredAt:number;payload:unknown}>();private viewers=new Map<string,{secret:string;expiresAt:number;revoked:boolean}>();private historySessions=new Map<string,{installationId:string;expiresAt:number;revoked:boolean}>();
+ async saveMatches(installationId:string,rows:HistoryMatchRow[]){let inserted=0;for(const row of rows){const key=`${installationId}:${row.matchKey}`;if(this.matches.has(key))continue;this.matches.set(key,{matchKey:row.matchKey,occurredAt:row.occurredAt.getTime(),payload:row.payload});inserted++}return inserted}
+ async createHistoryViewer(installationId:string){const secret=derive(this.pepper,"history-viewer",installationId);this.viewers.set(installationId,{secret,expiresAt:Date.now()+90*86400_000,revoked:false});return secret}
+ async revokeHistoryViewer(installationId:string){const v=this.viewers.get(installationId);if(v)v.revoked=true;for(const s of this.historySessions.values())if(s.installationId===installationId)s.revoked=true}
+ async createHistorySession(viewerToken:string,token:string,expires:Date){const entry=[...this.viewers.entries()].find(([,v])=>v.secret===viewerToken);if(!entry)return"not_found";const v=entry[1];if(v.revoked||v.expiresAt<=Date.now())return"gone";this.historySessions.set(token,{installationId:entry[0],expiresAt:expires.getTime(),revoked:false});return"created"}
+ async getMatchesBySession(token:string){const s=this.historySessions.get(token);if(!s||s.revoked||s.expiresAt<=Date.now())return undefined;const matches=[...this.matches.entries()].filter(([key])=>key.startsWith(`${s.installationId}:`)).sort((a,b)=>b[1].occurredAt-a[1].occurredAt).map(([,m])=>m.payload);return{installationId:s.installationId,matches}}
+ async deleteMatchesBySession(token:string){const s=this.historySessions.get(token);if(!s||s.revoked||s.expiresAt<=Date.now())return false;for(const key of [...this.matches.keys()])if(key.startsWith(`${s.installationId}:`))this.matches.delete(key);return true}
  private view(a:Stored){const v:AnalysisRecord={id:a.id,status:a.status,inputExpiresAt:a.inputExpiresAt,managementExpiresAt:a.resultExpiresAt,resultPayload:a.resultPayload,errorCode:a.errorCode,retryable:a.retryable,publicId:a.publicId,shareExpiresAt:a.shareExpiresAt,shareSecret:a.shareSecret};return v}
  countJobs(){return this.jobs.length} expireLease(id:string){const j=this.jobs.find(x=>x.id===id);if(j)j.leaseUntil=0} static owner(){return randomUUID()}
 }

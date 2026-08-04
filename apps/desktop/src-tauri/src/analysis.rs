@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use match_sanitizer::CreateAnalysisRequestV1;
+use match_sanitizer::{CreateAnalysisRequestV1, HistoryMatchV1};
 use parking_lot::Mutex;
 use reqwest::{blocking::Client, redirect::Policy};
 use secrecy::{ExposeSecret, SecretString};
@@ -476,6 +476,75 @@ pub fn open_report(state: &State, url: &str) -> Result<(), String> {
     opener::open(parsed.as_str()).map_err(|_| "无法打开系统浏览器".into())
 }
 
+pub fn sync_history(state: &State, matches: Vec<HistoryMatchV1>) -> Result<usize, String> {
+    if matches.is_empty() {
+        return Ok(0);
+    }
+    let request = match_sanitizer::sync_request(matches);
+    match_sanitizer::validate_history_request(&request)?;
+    let response = state
+        .http
+        .post(endpoint(state, "/v1/match-history")?)
+        .bearer_auth(credential(state)?)
+        .json(&request)
+        .send()
+        .map_err(|_| "战绩同步失败，请稍后重试".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("战绩同步失败（HTTP {}）", response.status().as_u16()));
+    }
+    Ok(request.matches.len())
+}
+
+pub fn open_history_viewer(state: &State) -> Result<(), String> {
+    let response = state
+        .http
+        .post(endpoint(state, "/v1/match-history/viewer")?)
+        .bearer_auth(credential(state)?)
+        .send()
+        .map_err(|_| "创建云端战绩链接失败".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "创建云端战绩链接失败（HTTP {}）",
+            response.status().as_u16()
+        ));
+    }
+    let viewer: HistoryViewer = response
+        .json()
+        .map_err(|_| "云端战绩链接响应无效".to_string())?;
+    let parsed = validate_history_viewer_url(&viewer.url, &state.report_base)?;
+    opener::open(parsed.as_str()).map_err(|_| "无法打开系统浏览器".into())
+}
+
+fn validate_history_viewer_url(value: &str, report_base: &Url) -> Result<Url, String> {
+    if contains_control(value) {
+        return Err("战绩链接不能包含控制字符".into());
+    }
+    let url = Url::parse(value).map_err(|_| "战绩链接无效".to_string())?;
+    if url.username() != "" || url.password().is_some() || url.query().is_some() {
+        return Err("战绩链接不能包含凭据或查询".into());
+    }
+    if !same_origin(&url, report_base) {
+        return Err("战绩链接 origin 不受信任".into());
+    }
+    let segments = url
+        .path_segments()
+        .map(|segments| segments.collect::<Vec<_>>())
+        .unwrap_or_default();
+    if segments.len() != 1 || segments[0] != "history" {
+        return Err("战绩链接路径无效".into());
+    }
+    if !url.fragment().map(valid_share_secret).unwrap_or(false) {
+        return Err("战绩链接 secret 无效".into());
+    }
+    Ok(url)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HistoryViewer {
+    url: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -529,6 +598,26 @@ mod tests {
                 .is_ok()
         );
         assert!(validate_report_base_url("https://app.example/r", false).is_err());
+    }
+    #[test]
+    fn history_viewer_url_policy_binds_origin_and_shape() {
+        let base = validate_report_base_url("https://app.example", false).unwrap();
+        let secret = "a".repeat(43);
+        let valid = format!("https://app.example/history#{secret}");
+        assert!(validate_history_viewer_url(&valid, &base).is_ok());
+        for invalid in [
+            format!("https://app.example/r/pub_01#{secret}"),
+            format!("https://app.example/history/extra#{secret}"),
+            "https://app.example/history".to_string(),
+            format!("https://app.example/history?x=1#{secret}"),
+            format!("https://evil.example/history#{secret}"),
+            format!("https://app.example/history#{}", "!".repeat(43)),
+        ] {
+            assert!(
+                validate_history_viewer_url(&invalid, &base).is_err(),
+                "accepted invalid history URL: {invalid:?}"
+            );
+        }
     }
     #[test]
     fn memory_store_is_explicit_and_works() {

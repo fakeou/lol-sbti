@@ -50,19 +50,39 @@ pgDescribe("PostgreSQL repository (requires DATABASE_URL)", () => {
 
   beforeAll(async () => {
     await pool.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
-    const migration = await readFile(resolve(process.cwd(), "../../infra/migrations/001_backend.sql"), "utf8");
-    await pool.query(migration);
+    for (const file of ["001_backend.sql", "002_match_history.sql"]) {
+      const migration = await readFile(resolve(process.cwd(), `../../infra/migrations/${file}`), "utf8");
+      await pool.query(migration);
+    }
     repo = new Repository(pool, pepper, key);
   });
   beforeEach(async () => {
-    await pool.query("TRUNCATE share_sessions, share_grants, analysis_jobs, analyses, installations, provider_daily_budget CASCADE");
+    await pool.query("TRUNCATE history_sessions, history_viewers, match_history, share_sessions, share_grants, analysis_jobs, analyses, installations, provider_daily_budget CASCADE");
   });
   afterAll(async () => pool.end());
 
   it("runs migration with all repository tables and constraints", async () => {
     const names = (await pool.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows.map(r => r.tablename);
-    expect(names).toEqual(["analyses", "analysis_jobs", "installations", "provider_daily_budget", "share_grants", "share_sessions"]);
+    expect(names).toEqual(["analyses", "analysis_jobs", "history_sessions", "history_viewers", "installations", "match_history", "provider_daily_budget", "share_grants", "share_sessions"]);
     await expect(pool.query("INSERT INTO analysis_jobs(id,analysis_id,attempt,status) VALUES('bad','missing',1,'unknown')")).rejects.toThrow();
+  });
+
+  it("syncs history with dedup, viewer sessions, list and clear", async () => {
+    const id = ids("hist");
+    await repo.createInstallation(id.installationId, `credential_${sequence}`);
+    const row = (matchKey: string, occurredAt: string) => ({ matchKey, occurredAt: new Date(occurredAt), payload: { matchKey, championId: 22 } });
+    expect(await repo.saveMatches(id.installationId, [row("a".repeat(64), "2026-07-01T10:00:00Z"), row("b".repeat(64), "2026-07-02T10:00:00Z")])).toBe(2);
+    expect(await repo.saveMatches(id.installationId, [row("a".repeat(64), "2026-07-01T10:00:00Z")])).toBe(0);
+    const viewer = await repo.createHistoryViewer(id.installationId);
+    expect(await repo.createHistorySession(viewer, "session_x", new Date(Date.now() + 60_000))).toBe("created");
+    const listed = await repo.getMatchesBySession("session_x");
+    expect(listed?.installationId).toBe(id.installationId);
+    expect(listed?.matches).toHaveLength(2);
+    expect(await repo.deleteMatchesBySession("session_x")).toBe(true);
+    expect((await repo.getMatchesBySession("session_x"))?.matches).toHaveLength(0);
+    expect(await repo.createHistorySession("x".repeat(43), "session_y", new Date(Date.now() + 60_000))).toBe("not_found");
+    await repo.revokeHistoryViewer(id.installationId);
+    expect(await repo.createHistorySession(viewer, "session_z", new Date(Date.now() + 60_000))).toBe("gone");
   });
 
   it("creates one analysis/job under concurrent idempotent requests", async () => {

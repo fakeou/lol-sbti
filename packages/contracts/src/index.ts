@@ -52,6 +52,28 @@ export const CreateAnalysisRequestV1Schema = StrictObject({
 });
 export type CreateAnalysisRequestV1 = Static<typeof CreateAnalysisRequestV1Schema>;
 
+export const HistoryMatchV1Schema = StrictObject({
+  ...UploadMatchV1Schema.properties,
+  matchKey: Type.String({ pattern: "^[a-f0-9]{64}$" })
+});
+export type HistoryMatchV1 = Static<typeof HistoryMatchV1Schema>;
+
+export const HistorySyncRequestV1Schema = StrictObject({
+  schemaVersion: Type.Literal(1),
+  matches: Type.Array(HistoryMatchV1Schema, { minItems: 1, maxItems: 1000 })
+});
+export type HistorySyncRequestV1 = Static<typeof HistorySyncRequestV1Schema>;
+
+export const HistoryViewerResponseV1Schema = StrictObject({
+  url: Type.String({ minLength: 1, maxLength: 2048, pattern: "^https://" })
+});
+export type HistoryViewerResponseV1 = Static<typeof HistoryViewerResponseV1Schema>;
+
+export const HistoryMatchesResponseV1Schema = StrictObject({
+  matches: Type.Array(HistoryMatchV1Schema, { minItems: 0, maxItems: 1000 })
+});
+export type HistoryMatchesResponseV1 = Static<typeof HistoryMatchesResponseV1Schema>;
+
 export const CreateAnalysisResponseV1Schema = StrictObject({
   analysisId: Identifier,
   status: Type.Literal("queued"),

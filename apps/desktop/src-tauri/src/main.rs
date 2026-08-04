@@ -34,11 +34,15 @@ fn display_name(summoner: &Value) -> String {
     }
 }
 
-fn recent_games(connection: &LcuConnection, puuid: &str) -> Result<Vec<Value>, String> {
+fn recent_games(
+    connection: &LcuConnection,
+    puuid: &str,
+    max_matches: usize,
+) -> Result<Vec<Value>, String> {
     let mut seen_game_ids = HashSet::new();
     let mut recent_games = Vec::new();
 
-    for begin in (0..MAX_MATCHES).step_by(HISTORY_PAGE_SIZE) {
+    for begin in (0..max_matches).step_by(HISTORY_PAGE_SIZE) {
         let end = begin + HISTORY_PAGE_SIZE - 1;
         let path = format!(
             "/lol-match-history/v1/products/lol/{puuid}/matches?begIndex={begin}&endIndex={end}"
@@ -60,7 +64,7 @@ fn recent_games(connection: &LcuConnection, puuid: &str) -> Result<Vec<Value>, S
             if seen_game_ids.insert(game_id) {
                 recent_games.push(game.clone());
                 added_on_page += 1;
-                if recent_games.len() == MAX_MATCHES {
+                if recent_games.len() == max_matches {
                     break;
                 }
             }
@@ -69,7 +73,7 @@ fn recent_games(connection: &LcuConnection, puuid: &str) -> Result<Vec<Value>, S
         // 部分 LCU 会在深分页时重复返回第一页；没有新增记录时立即停止。
         if games.len() < HISTORY_PAGE_SIZE
             || added_on_page == 0
-            || recent_games.len() == MAX_MATCHES
+            || recent_games.len() == max_matches
         {
             break;
         }
@@ -99,7 +103,7 @@ fn preview_matches() -> Result<analysis::Preview, String> {
         .get("puuid")
         .and_then(Value::as_str)
         .ok_or("当前用户缺少必要标识")?;
-    let games = recent_games(&connection, puuid)?;
+    let games = recent_games(&connection, puuid, MAX_MATCHES)?;
     let sanitized = match_sanitizer::sanitize_matches(&games, &summoner)?;
     let matches = sanitized.matches;
     let from = matches
@@ -161,6 +165,27 @@ fn open_report(url: String, state: tauri::State<analysis::State>) -> Result<(), 
     analysis::open_report(&state, &url)
 }
 
+const MAX_HISTORY_MATCHES: usize = 1000;
+
+/// 拉取 LCU 中的近期对局（全模式），脱敏后同步到云端。
+/// 返回本次新增上传的对局数量。
+#[tauri::command]
+fn sync_history(state: tauri::State<analysis::State>) -> Result<usize, String> {
+    let (connection, summoner) = current_connection()?;
+    let puuid = summoner
+        .get("puuid")
+        .and_then(Value::as_str)
+        .ok_or("当前用户缺少必要标识")?;
+    let games = recent_games(&connection, puuid, MAX_HISTORY_MATCHES)?;
+    let (items, _skipped) = match_sanitizer::sanitize_history(&games, &summoner)?;
+    analysis::sync_history(&state, items)
+}
+
+#[tauri::command]
+fn open_history_viewer(state: tauri::State<analysis::State>) -> Result<(), String> {
+    analysis::open_history_viewer(&state)
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -175,7 +200,9 @@ fn main() {
             recover_analysis,
             analysis_status,
             analysis_action,
-            open_report
+            open_report,
+            sync_history,
+            open_history_viewer
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 Tauri 应用");

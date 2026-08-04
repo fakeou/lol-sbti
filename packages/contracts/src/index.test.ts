@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Value } from "@sinclair/typebox/value";
-import { AnalysisStatusV1Schema, CreateAnalysisRequestV1Schema, CreateAnalysisResponseV1Schema, LbtiReportV1Schema, RecoverAnalysisRequestV1Schema, RecoverAnalysisResponseV1Schema } from "./index.js";
+import { AnalysisStatusV1Schema, CreateAnalysisRequestV1Schema, CreateAnalysisResponseV1Schema, HistoryMatchesResponseV1Schema, HistoryMatchV1Schema, HistorySyncRequestV1Schema, HistoryViewerResponseV1Schema, LbtiReportV1Schema, RecoverAnalysisRequestV1Schema, RecoverAnalysisResponseV1Schema } from "./index.js";
 
 const match = { occurredAt: "2026-07-01T10:00:00Z", queueId: 420, gameMode: "CLASSIC", durationSeconds: 1200, championId: 1, position: "TOP", won: true, kills: 1, deaths: 2, assists: 3, cs: 100, gold: 8000, championDamage: 10000, damageTaken: 9000, healing: 100, visionScore: 10, wardsPlaced: 5, wardsKilled: 1, items: [1001] };
 const createAnalysisFixture = { schemaVersion: 1, locale: "zh-CN", generatedAt: "2026-07-24T10:00:00Z", clientVersion: "1.0.0", matches: Array.from({ length: 5 }, () => match) };
@@ -26,6 +26,28 @@ describe("analysis management contracts", () => {
     expect(Value.Check(RecoverAnalysisRequestV1Schema, { idempotencyKey: "123e4567-e89b-42d3-a456-426614174000" })).toBe(true);
     expect(Value.Check(RecoverAnalysisRequestV1Schema, { idempotencyKey: "bad", payload: {} })).toBe(false);
     expect(Value.Check(RecoverAnalysisResponseV1Schema, { analysisId: "ana_1", receiptToken: "r".repeat(32), pollAfterMs: 2000, managementExpiresAt: "2026-07-25T10:00:00Z" })).toBe(true);
+  });
+});
+
+describe("cloud match history contracts", () => {
+  const historyMatch = { ...match, matchKey: "a".repeat(64) };
+  it("accepts a single sanitized history match with a stable match key", () => {
+    expect(Value.Check(HistoryMatchV1Schema, historyMatch)).toBe(true);
+    expect(Value.Check(HistorySyncRequestV1Schema, { schemaVersion: 1, matches: [historyMatch] })).toBe(true);
+    expect(Value.Check(HistoryMatchesResponseV1Schema, { matches: [historyMatch] })).toBe(true);
+    expect(Value.Check(HistoryViewerResponseV1Schema, { url: "https://app.example/history#token" })).toBe(true);
+  });
+  it("rejects missing or malformed match keys", () => {
+    const { matchKey: _, ...withoutKey } = historyMatch;
+    expect(Value.Check(HistoryMatchV1Schema, withoutKey)).toBe(false);
+    for (const matchKey of ["Z".repeat(64), "a".repeat(63), "a".repeat(65)]) expect(Value.Check(HistoryMatchV1Schema, { ...historyMatch, matchKey })).toBe(false);
+  });
+  it("rejects empty sync requests and identity fields inside matches", () => {
+    expect(Value.Check(HistorySyncRequestV1Schema, { schemaVersion: 1, matches: [] })).toBe(false);
+    expect(Value.Check(HistorySyncRequestV1Schema, { schemaVersion: 1, matches: [{ ...historyMatch, puuid: "identity" }] })).toBe(false);
+  });
+  it("rejects non-https viewer urls", () => {
+    expect(Value.Check(HistoryViewerResponseV1Schema, { url: "http://app.example/history#token" })).toBe(false);
   });
 });
 
